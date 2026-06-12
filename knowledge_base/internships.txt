@@ -1,0 +1,22 @@
+Title: Enterprise Internship Programs | FlowZint
+URL: https://flowzint.in/fz/internships.html
+
+An elite, intensive 30-Day corporate program engineered for ambitious freshers. Execute real-world enterprise projects, secure an industry-recognized certification, and unlock direct placement opportunities.
+
+Roadmap:
+1. Offer Letter: Receive selection letter upon registration.
+2. 30 Days curriculum.
+3. Daily assignments.
+4. Live projects: deploy enterprise-grade projects.
+5. Exam & Cert: Clear skills assessment.
+6. Placement assistance.
+
+Curated Tracks:
+1. Artificial Intelligence: Predictive Modeling, Deep Neural Networks, Computer Vision, Generative AI. Target Roles: AI Engineer, ML Specialist, Data Scientist.
+2. Power BI Data Analytics: ETL pipelines, DAX expressions, Executive dashboards. Target Roles: Data Analyst, BI Developer.
+3. Website Development: UI engineering, responsive styling, REST API integration. Target Roles: Frontend Developer, UI Engineer.
+4. App Development: Mobile engineering for iOS/Android. Target Roles: Mobile App Developer.
+5. Full Stack Engineering: Microservices, monolithic architectures, databases (SQL/NoSQL), JWT auth, cloud deployment. Target Roles: Full Stack Engineer.
+
+Eligibility: College students, recent graduates, tech freshers.
+Placement Assistance: Access to placement portal, fresher job openings, resume-building modules, and interview prep.

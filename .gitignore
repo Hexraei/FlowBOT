@@ -1,0 +1,26 @@
+# Node dependencies
+node_modules/
+dist/
+.svelte-kit/
+.next/
+out/
+
+# Python dependencies & cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# Database and state files
+backend/instance/
+.chroma/
+.idea/
+.vscode/
+*.db
+*.log
+.DS_Store
