@@ -126,3 +126,7 @@ d:\SupportBOT\
 - **Lead Filtering**: Created `resolved_by_ai` status for purely informational chats. Only logs tickets as `pending_review` (actionable leads) if they contain contact information, express negative sentiment, have high urgency/severity, or fail RAG grounding.
 - **Dashboard Cleanup**: Set the `AdminDashboard.tsx` status queue to filter by `pending_review` by default, keeping the dashboard clean. Styled a custom `RESOLVED BY AI` status badge.
 
+#### 3. Bug Report Classification & Empathetic Fallback Responses
+- **Bug Detection Heuristics**: Expanded `rule_based_fallback_analysis` in `backend/app/llm.py` to identify error keywords and interface components. Handled typos (like "webstie") and added overrides for uppercase/exclamation complaints, force-escalating them as high-severity/frustrated tickets.
+- **Empathetic Heuristic Responses**: Updated `generate_heuristic_response` to check for technical issues and apologize + log technical complaints immediately, avoiding generic marketing pitches for broken systems.
+

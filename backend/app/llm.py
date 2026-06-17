@@ -92,6 +92,19 @@ def rule_based_fallback_analysis(message: str) -> dict:
             break
             
     import re
+    
+    # Bug / technical issue detection keywords
+    has_error_kw = any(kw in msg_lower for kw in [
+        "error", "fail", "broken", "500", "bug", "crash", "issue", "problem", 
+        "not working", "won't work", "does not work", "freeze", "frozen", "stuck",
+        "down", "offline", "slow", "load", "blank", "cannot", "can't", "working"
+    ])
+    
+    is_interface_element = any(kw in msg_lower for kw in [
+        "button", "link", "menu", "page", "site", "website", "webstie", "app", 
+        "portal", "screen", "click", "form", "input", "load"
+    ])
+    
     if "hiring" in msg_lower or "job" in msg_lower or "recruit" in msg_lower:
         intent = "hiring_process"
         component = "Careers"
@@ -107,10 +120,10 @@ def rule_based_fallback_analysis(message: str) -> dict:
     elif "flowzint" in msg_lower and any(w in msg_lower for w in ["what", "who", "about", "info", "profile", "explain", "detail", "is"]):
         intent = "about_flowzint"
         component = "General"
-    elif any(kw in msg_lower for kw in ["error", "fail", "broken", "500", "bug", "service", "automation", "ai", "saas", "infrastructure", "platform", "branding", "web", "mobile"]):
+    elif has_error_kw or any(kw in msg_lower for kw in ["service", "automation", "ai", "saas", "infrastructure", "platform", "branding", "web", "mobile"]):
         intent = "service_inquiry"
-        if any(kw in msg_lower for kw in ["error", "fail", "broken", "500", "bug"]):
-            component = "Web Infrastructure"
+        if has_error_kw:
+            component = "Web Infrastructure" if is_interface_element else "AI & Automation"
             severity = "medium"
             urgency = 4
             sentiment = "negative"
@@ -119,6 +132,15 @@ def rule_based_fallback_analysis(message: str) -> dict:
             severity = "low"
             urgency = 3
             sentiment = "neutral"
+            
+    # Explicit override for angry bug reports (caps lock, multiple exclamation marks, or error keywords)
+    if (msg_lower != message and len(message) > 5 and message.isupper()) or "!!!" in message or (has_error_kw and is_interface_element):
+        if has_error_kw or "work" in msg_lower or "button" in msg_lower:
+            intent = "service_inquiry"
+            component = "Web Infrastructure"
+            severity = "high"
+            urgency = 5
+            sentiment = "frustrated"
         
     if "urgent" in msg_lower or "asap" in msg_lower or "emergency" in msg_lower:
         urgency = 5
@@ -139,6 +161,20 @@ def rule_based_fallback_analysis(message: str) -> dict:
 def generate_heuristic_response(message: str, analysis: dict) -> str:
     """Generates a high-quality pre-scripted answer from FlowZint's text when Ollama is offline."""
     intent = analysis.get("intent", "other")
+    sentiment = analysis.get("sentiment", "neutral")
+    severity = analysis.get("severity", "low")
+    
+    # Check if this is a technical issue/bug report (service_inquiry/other with negative/frustrated sentiment or medium/high severity)
+    is_technical_issue = (
+        (intent in ["service_inquiry", "other"]) and 
+        (sentiment in ["frustrated", "negative"] or severity in ["medium", "high"])
+    )
+    
+    if is_technical_issue:
+        return (
+            "I'm very sorry to hear that you're experiencing technical issues with our website or services. "
+            "I have logged this issue for our engineering and support teams to investigate and resolve immediately."
+        )
     
     if intent in ["careers", "hiring_process", "internship_programs", "open_opportunities"]:
         return (
