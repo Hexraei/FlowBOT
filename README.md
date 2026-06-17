@@ -129,4 +129,5 @@ d:\SupportBOT\
 #### 3. Bug Report Classification & Empathetic Fallback Responses
 - **Bug Detection Heuristics**: Expanded `rule_based_fallback_analysis` in `backend/app/llm.py` to identify error keywords and interface components. Handled typos (like "webstie") and added overrides for uppercase/exclamation complaints, force-escalating them as high-severity/frustrated tickets.
 - **Empathetic Heuristic Responses**: Updated `generate_heuristic_response` to check for technical issues and apologize + log technical complaints immediately, avoiding generic marketing pitches for broken systems.
+- **Ollama Timeout Resolution**: Increased the REST request timeout limit from 25 seconds to 60 seconds in `call_ollama`. Added `"keep_alive": "1h"` to the request payload so that the local Ollama instance keeps the Gemma model weights loaded in system RAM for 1 hour, preventing cold-start delays.
 

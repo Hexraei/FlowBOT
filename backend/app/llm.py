@@ -8,7 +8,8 @@ def call_ollama(prompt: str, system_prompt: str = None, format_json: bool = True
     payload = {
         "model": settings.OLLAMA_MODEL,
         "prompt": prompt,
-        "stream": False
+        "stream": False,
+        "keep_alive": "1h"  # Keeps model loaded in RAM for 1 hour to prevent cold-start delays
     }
     if system_prompt:
         payload["system"] = system_prompt
@@ -16,7 +17,7 @@ def call_ollama(prompt: str, system_prompt: str = None, format_json: bool = True
         payload["format"] = "json"
         
     try:
-        response = requests.post(url, json=payload, timeout=25)
+        response = requests.post(url, json=payload, timeout=60)
         response.raise_for_status()
         result = response.json()
         return result.get("response", "").strip()
