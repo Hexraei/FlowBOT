@@ -340,7 +340,13 @@ Answer:
         
         # Check if LLM indicates it doesn't know
         lower_resp = response_text.lower()
-        if "don't know" in lower_resp or "do not know" in lower_resp or "cannot find" in lower_resp or "not sure" in lower_resp or not response_text:
+        unknown_indicators = [
+            "don't know", "do not know", "cannot find", "not sure", "does not contain",
+            "unable to answer", "no information", "cannot be answered", "not mentioned",
+            "unable to find", "not provided", "not discussed", "not cover",
+            "not included", "unable to provide", "no mention", "do not have"
+        ]
+        if any(ind in lower_resp for ind in unknown_indicators) or not response_text:
             print("RAG: LLM indicated it doesn't know. Triggering fallback.")
             return generate_heuristic_response(message, analysis)
             
