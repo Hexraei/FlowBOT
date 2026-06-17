@@ -1,0 +1,32 @@
+page_name,url,http_status,scrape_success,char_count,contains_price,error_message
+homepage,https://flowzint.in/,200,True,1421,False,
+ai-automation,https://flowzint.in/fz/ai-automation.html,200,True,7390,False,
+about,https://flowzint.in/fz/about.html,200,True,5688,False,
+enterprise-tech,https://flowzint.in/fz/enterprise-tech.html,200,True,5552,True,
+ai-transformation,https://flowzint.in/fz/ai-transformation.html,200,True,6047,True,
+customer-experience,https://flowzint.in/fz/customer-experience.html,200,True,4825,False,
+enterprise-systems,https://flowzint.in/fz/enterprise-systems.html,200,True,4953,False,
+business,https://flowzint.in/fz/business.html,200,True,4033,True,
+future-operations,https://flowzint.in/fz/future-operations.html,200,True,5099,False,
+terms,https://flowzint.in/fz/terms.html,404,False,0,False,HTTP Error 404: Not Found
+hiring,https://flowzint.in/fz/hiring.html,200,True,6700,True,
+privacy,https://flowzint.in/fz/privacy.html,404,False,0,False,HTTP Error 404: Not Found
+partnership,https://flowzint.in/fz/partnership.html,200,True,4614,True,
+mobile-platforms,https://flowzint.in/fz/mobile-platforms.html,200,True,7301,False,
+opportunities,https://flowzint.in/fz/opportunities.html,200,True,4975,False,
+business-automation,https://flowzint.in/fz/business-automation.html,200,True,5456,True,
+innovation,https://flowzint.in/fz/innovation.html,200,True,4892,True,
+careers,https://flowzint.in/fz/careers.html,200,True,5554,False,
+web-infrastructure,https://flowzint.in/fz/web-infrastructure.html,200,True,6727,False,
+contact,https://flowzint.in/fz/contact.html,200,True,1835,False,
+home,https://flowzint.in/fz/home.html,200,True,7179,False,
+insights-ai,https://flowzint.in/fz/insights-ai.html,200,True,4556,False,
+saas-systems,https://flowzint.in/fz/saas-systems.html,200,True,6619,False,
+branding-growth,https://flowzint.in/fz/branding-growth.html,200,True,5051,False,
+internships,https://flowzint.in/fz/internships.html,200,True,7051,True,
+digital-transformation,https://flowzint.in/fz/digital-transformation.html,200,True,5297,False,
+culture,https://flowzint.in/fz/culture.html,200,True,5182,False,
+hiring-all-experienced-candidates,https://flowzint.in/fz/fz/hiring-all-experienced-candidates.html,404,False,0,False,HTTP Error 404: Not Found
+jobs-application,https://flowzint.in/fz/jobs-application.html,404,False,0,False,HTTP Error 404: Not Found
+flowzintai-getnotified,https://flowzint.in/fz/flowzintai-getnotified.html,404,False,0,False,HTTP Error 404: Not Found
+flowzintai-learnmore,https://flowzint.in/fz/flowzintai-learnmore.html,404,False,0,False,HTTP Error 404: Not Found

@@ -32,22 +32,60 @@ def startup_event():
 @app.post("/api/chat", response_model=TicketResponse)
 def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
     """
-    Core customer chat endpoint. Analyzes the message, runs RAG,
-    saves the ticket, runs duplicate clustering, and returns bot response.
+    Core customer chat endpoint. Analyzes the message, runs RAG with history context,
+    saves the ticket state, runs duplicate clustering, and returns bot response.
     """
     message = req.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
         
     try:
-        # 1. Run LLM Structured Analysis
-        analysis = analyze_ticket(message)
+        # Fetch conversation history if session_id is provided
+        history_list = []
+        if req.session_id:
+            past_tickets = (
+                db.query(Ticket)
+                .filter(Ticket.session_id == req.session_id)
+                .order_by(Ticket.created_at.asc())
+                .limit(6)
+                .all()
+            )
+            for t in past_tickets:
+                history_list.append({"sender": "user", "text": t.user_message})
+                if t.bot_response:
+                    history_list.append({"sender": "assistant", "text": t.bot_response})
+                    
+        # Rewrite query to resolve coreferences if history exists
+        from app.llm import rewrite_query_with_history
+        rewritten_query = rewrite_query_with_history(message, history_list)
         
-        # 2. Generate Grounded Support Response (RAG/Fallback)
-        bot_response = generate_grounded_response(message, analysis)
+        # 1. Run LLM Structured Analysis on rewritten query
+        analysis = analyze_ticket(rewritten_query)
         
-        # 3. Create Ticket record
+        # 2. Generate Grounded Support Response (RAG/Fallback) using history
+        bot_response = generate_grounded_response(rewritten_query, analysis, history_list)
+        
+        # 3. Apply Actionable Ticket Escalation Filtering:
+        # Only escalate if the query is high priority, includes contact details, or fails RAG.
+        status = "resolved_by_ai"
+        
+        is_high_priority = (
+            analysis.get("severity") in ["medium", "high"] or
+            analysis.get("urgency", 3) >= 4 or
+            analysis.get("sentiment") in ["negative", "frustrated"]
+        )
+        has_contact_info = bool(analysis.get("contact_details"))
+        is_fallback_triggered = (
+            "routed it to the FlowZint support team" in bot_response or
+            "operations lead will reach out" in bot_response
+        )
+        
+        if is_high_priority or has_contact_info or is_fallback_triggered:
+            status = "pending_review"
+            
+        # 4. Create Ticket record
         ticket = Ticket(
+            session_id=req.session_id,
             user_message=message,
             bot_response=bot_response,
             intent=analysis.get("intent"),
@@ -58,13 +96,13 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
             urgency=analysis.get("urgency"),
             contact_details=analysis.get("contact_details"),
             confidence_score=analysis.get("confidence_score"),
-            status="pending_review"
+            status=status
         )
         db.add(ticket)
         db.commit()
         db.refresh(ticket)
         
-        # 4. Perform duplicate grouping (Clustering)
+        # 5. Perform duplicate grouping (Clustering)
         cluster_id = find_or_create_cluster(ticket, db)
         if cluster_id:
             ticket.cluster_id = cluster_id

@@ -17,7 +17,7 @@ collection = chroma_client.get_or_create_collection(
     metadata={"hnsw:space": "cosine"}
 )
 
-def chunk_text(text: str, max_chunk_size: int = 500, overlap: int = 100) -> list[str]:
+def chunk_text(text: str, max_chunk_size: int = 1000, overlap: int = 200) -> list[str]:
     """Helper to chunk text with overlap."""
     words = text.split()
     chunks = []
@@ -41,6 +41,7 @@ def chunk_text(text: str, max_chunk_size: int = 500, overlap: int = 100) -> list
 
 def index_knowledge_base():
     """Reads all text files in the knowledge_base directory, chunks them, and stores in Chroma."""
+    global collection
     kb_path = settings.KNOWLEDGE_BASE_DIR
     if not os.path.exists(kb_path):
         print(f"Knowledge base directory '{kb_path}' does not exist.")
@@ -50,6 +51,18 @@ def index_knowledge_base():
     if not txt_files:
         print(f"No .txt files found in '{kb_path}'")
         return
+        
+    print(f"Clearing existing Chroma collection to prevent orphan chunks...")
+    try:
+        chroma_client.delete_collection("flowzint_kb")
+    except Exception as e:
+        print(f"No collection to delete: {e}")
+        
+    collection = chroma_client.get_or_create_collection(
+        name="flowzint_kb",
+        embedding_function=embedding_fn,
+        metadata={"hnsw:space": "cosine"}
+    )
         
     print(f"Indexing {len(txt_files)} knowledge base files into Chroma...")
     
@@ -83,7 +96,9 @@ def index_knowledge_base():
             chunks = chunk_text(body_content)
             
             for idx, chunk in enumerate(chunks):
-                documents.append(chunk)
+                # Prepend the page title to embed document-level semantics in every chunk
+                chunk_with_context = f"Page Title: {title}\n{chunk}"
+                documents.append(chunk_with_context)
                 metadatas.append({
                     "source": source_name,
                     "title": title,

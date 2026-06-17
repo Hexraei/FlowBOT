@@ -109,3 +109,20 @@ d:\SupportBOT\
 ├── knowledge_base/                 # Scraped FlowZint pages
 └── README.md
 ```
+
+## Change Log
+
+### June 17, 2026
+
+#### 1. RAG Knowledge Ingestion Ingestion Fixes
+- **Timeout Protection**: Resolved `WinError 10060` connection timeouts during scraping by building an audit crawler (`backend/audit_scraper.py`) with exponential backoffs and retry mechanisms.
+- **Dense Retrieval Enhancements**: Prepended the document's page title directly to every chunk in `backend/app/vector_store.py` to prevent semantic dilution.
+- **Orphan Chunk Prevention**: Reconfigured the vector database build logic to delete and recreate the Chroma DB collection during indexing to avoid orphaned chunks persisting.
+- **Playwright Verification**: Created `backend/validate_scrape.py` using Playwright to confirm exact text-matching (like the `₹1999` internship price) against dynamic browser viewports.
+
+#### 2. Stateful Conversation History & Lead Escalation Filtering
+- **Stateful Context Memory**: Added `session_id` to database schemas (`backend/app/database.py`, `backend/app/schemas.py`) and cached unique session IDs in the React front-end `ChatWidget.tsx`.
+- **Coreference Resolution**: Integrated a Gemma query rewriter in `backend/app/llm.py` that parses conversation history to translate context-dependent messages (e.g. *"okay what do you offer in these?"*) into standalone search queries before retrieval.
+- **Lead Filtering**: Created `resolved_by_ai` status for purely informational chats. Only logs tickets as `pending_review` (actionable leads) if they contain contact information, express negative sentiment, have high urgency/severity, or fail RAG grounding.
+- **Dashboard Cleanup**: Set the `AdminDashboard.tsx` status queue to filter by `pending_review` by default, keeping the dashboard clean. Styled a custom `RESOLVED BY AI` status badge.
+

@@ -4,9 +4,11 @@ from datetime import datetime
 
 class TicketRequest(BaseModel):
     message: str
+    session_id: Optional[str] = None
 
 class TicketResponse(BaseModel):
     id: str
+    session_id: Optional[str] = None
     created_at: datetime
     user_message: str
     bot_response: str

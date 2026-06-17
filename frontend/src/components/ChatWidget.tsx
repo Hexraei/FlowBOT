@@ -10,6 +10,14 @@ interface Message {
 
 export const ChatWidget: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [sessionId] = useState(() => {
+    let id = sessionStorage.getItem('flowzint_chat_session_id');
+    if (!id) {
+      id = 'sess_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now().toString(36);
+      sessionStorage.setItem('flowzint_chat_session_id', id);
+    }
+    return id;
+  });
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
@@ -47,7 +55,7 @@ export const ChatWidget: React.FC = () => {
       const response = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ message: text, session_id: sessionId })
       });
       
       if (!response.ok) {

@@ -37,7 +37,7 @@ export const AdminDashboard: React.FC = () => {
   
   // Filter and search states
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('pending_review');
   const [severityFilter, setSeverityFilter] = useState('');
   const [intentFilter, setIntentFilter] = useState('');
 
@@ -140,6 +140,9 @@ export const AdminDashboard: React.FC = () => {
     } else if (status === 'pending_review') {
       bg = 'rgba(245, 158, 11, 0.15)';
       color = 'var(--warning)';
+    } else if (status === 'resolved_by_ai') {
+      bg = 'rgba(14, 165, 233, 0.15)';
+      color = '#38bdf8';
     }
     return (
       <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', backgroundColor: bg, color }}>
@@ -329,6 +332,7 @@ export const AdminDashboard: React.FC = () => {
               >
                 <option value="">All Statuses</option>
                 <option value="pending_review">Pending Review</option>
+                <option value="resolved_by_ai">Resolved by AI</option>
                 <option value="handoff_completed">Handoff Completed</option>
                 <option value="resolved">Resolved</option>
                 <option value="ignored">Ignored</option>

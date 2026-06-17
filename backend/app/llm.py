@@ -104,6 +104,9 @@ def rule_based_fallback_analysis(message: str) -> dict:
     elif "price" in msg_lower or "cost" in msg_lower or "quote" in msg_lower or "enquiry" in msg_lower or "inquire" in msg_lower:
         intent = "business_enquiry"
         component = "Branding & Growth"
+    elif "flowzint" in msg_lower and any(w in msg_lower for w in ["what", "who", "about", "info", "profile", "explain", "detail", "is"]):
+        intent = "about_flowzint"
+        component = "General"
     elif any(kw in msg_lower for kw in ["error", "fail", "broken", "500", "bug", "service", "automation", "ai", "saas", "infrastructure", "platform", "branding", "web", "mobile"]):
         intent = "service_inquiry"
         if any(kw in msg_lower for kw in ["error", "fail", "broken", "500", "bug"]):
@@ -146,23 +149,34 @@ def generate_heuristic_response(message: str, analysis: dict) -> str:
             "completion certificate with placement assistance. Freshers and college students are eligible."
         )
     elif intent in ["business_enquiry", "service_inquiry"]:
-        return (
+        msg = (
             "FlowZint builds future-ready enterprise digital infrastructure, SaaS systems, and intelligent AI "
             "automation platforms. Our key services include Web Infrastructure, Mobile Platforms, SaaS Systems, "
-            "AI & Automation, Enterprise Systems, and Branding & Growth solutions. I have successfully logged "
-            "your inquiry for the FlowZint team, and an operations lead will reach out to you."
+            "AI & Automation, Enterprise Systems, and Branding & Growth solutions."
         )
+        if analysis.get("contact_details"):
+            msg += " I have successfully logged your inquiry for the FlowZint team, and an operations lead will reach out to you."
+        return msg
     elif intent == "partnership":
-        return (
+        msg = (
             "FlowZint is revolutionizing digital ecosystems and enterprise automation. We welcome partnerships "
-            "with corporate entities, digital infrastructure vendors, and scale operations. I have logged your "
-            "partnership request, and our collaboration team will review the details."
+            "with corporate entities, digital infrastructure vendors, and scale operations."
         )
+        if analysis.get("contact_details"):
+            msg += " I have logged your partnership request, and our collaboration team will review the details."
+        return msg
     elif intent == "contact_info":
         return (
             "You can find official FlowZint contact channels at https://flowzint.in/fz/contact.html. "
             "Our corporate headquarters supports enquiries regarding SaaS systems, enterprise AI solutions, "
             "and hiring workflows directly through this assistant."
+        )
+    elif intent == "about_flowzint":
+        return (
+            "FlowZint is an upcoming technology company specializing in building enterprise "
+            "digital infrastructure, SaaS systems, and intelligent AI automation platforms. "
+            "We build future-ready solutions for global scale, helping organizations optimize "
+            "workflows and integrate connected technologies."
         )
     else:
         return (
@@ -170,7 +184,8 @@ def generate_heuristic_response(message: str, analysis: dict) -> str:
             "and routed it to the FlowZint support team for a manual response."
         )
 
-def generate_grounded_response(message: str, analysis: dict) -> str:
+
+def generate_grounded_response(message: str, analysis: dict, history: list[dict] = None) -> str:
     """
     Generates a response grounded in FlowZint's official crawled content.
     If the content isn't relevant, triggers fallback behavior.
@@ -196,16 +211,36 @@ def generate_grounded_response(message: str, analysis: dict) -> str:
         for d in docs
     )
     
+    # Format history for the prompt if present
+    history_str = ""
+    if history:
+        for msg in history:
+            role = "User" if msg.get("sender") == "user" else "Assistant"
+            history_str += f"{role}: {msg.get('text')}\n"
+    
     system_prompt = (
-        "You are the FlowZint AI Concierge, a helpful support assistant. "
-        "Your task is to answer user queries using ONLY the provided FlowZint context. "
-        "Do not invent facts. If the answer cannot be found in the context, say "
-        "\"I don't know the answer based on the context.\""
+        "You are the FlowZint AI Concierge, a polite and professional customer support assistant. "
+        "Your goal is to help visitors by answering their questions using the provided facts. "
+        "Important Guidelines:\n"
+        "1. Speak naturally as if you are a customer support agent talking directly to a customer.\n"
+        "2. Do NOT mention words like 'context', 'provided facts', 'according to the text', 'source documentation', or 'given information'. Just answer the question directly.\n"
+        "3. Do not invent details. If you cannot answer the question using the facts provided, respond EXACTLY with: 'I am not sure about that detail.' (so our fallback system can route it to a human)."
     )
     
     prompt = f"""
-Context:
+System Instructions:
+You are the FlowZint AI Concierge, a polite and professional customer support assistant.
+Your goal is to answer the user question using the provided facts.
+Guidelines:
+1. Speak naturally as a customer support representative talking directly to a customer.
+2. Do NOT use phrases like "based on the provided context", "according to the text", "context", "given documents", or similar. Just answer the question directly.
+3. Do not invent details. If the provided facts do not contain the answer, respond EXACTLY with: "I am not sure about that detail."
+
+Provided Facts:
 {context_str}
+
+Conversation History:
+{history_str}
 
 User Question: {message}
 
@@ -218,7 +253,7 @@ Answer:
         
         # Check if LLM indicates it doesn't know
         lower_resp = response_text.lower()
-        if "don't know" in lower_resp or "do not know" in lower_resp or "cannot find" in lower_resp or not response_text:
+        if "don't know" in lower_resp or "do not know" in lower_resp or "cannot find" in lower_resp or "not sure" in lower_resp or not response_text:
             print("RAG: LLM indicated it doesn't know. Triggering fallback.")
             return generate_heuristic_response(message, analysis)
             
@@ -226,3 +261,49 @@ Answer:
     except Exception as e:
         print(f"RAG generation failed: {e}. Triggering fallback.")
         return generate_heuristic_response(message, analysis)
+
+
+def rewrite_query_with_history(query: str, history: list[dict]) -> str:
+    """
+    Given a user's latest query and the conversation history,
+    resolves any coreferences and context dependencies to rewrite
+    the query into a standalone, search-friendly search query.
+    """
+    if not history:
+        return query
+        
+    # Format history for the prompt
+    history_str = ""
+    for msg in history:
+        role = "User" if msg.get("sender") == "user" else "Assistant"
+        history_str += f"{role}: {msg.get('text')}\n"
+        
+    system_prompt = (
+        "You are an expert conversational AI search assistant. Your job is to read the chat history "
+        "and the user's latest message, and determine if the latest message refers to previous topics (coreference). "
+        "If it does, rewrite the latest message to be a standalone search query that contains all necessary context. "
+        "If the latest message is already a standalone search query or is unrelated to the history, return it EXACTLY as-is. "
+        "Respond ONLY with the rewritten message (or the original message if no rewrite is needed). Do not include any explanations or quotes."
+    )
+    
+    prompt = f"""
+Chat History:
+{history_str}
+
+User's Latest Message: {query}
+
+Standalone Search Query:
+"""
+    try:
+        rewritten = call_ollama(prompt, system_prompt=system_prompt, format_json=False)
+        rewritten = rewritten.strip()
+        # Clean up any quotes the model might have returned
+        if rewritten.startswith('"') and rewritten.endswith('"'):
+            rewritten = rewritten[1:-1].strip()
+        if rewritten.startswith("'") and rewritten.endswith("'"):
+            rewritten = rewritten[1:-1].strip()
+        print(f"Query Rewriter: Original: '{query}' -> Rewritten: '{rewritten}'")
+        return rewritten if rewritten else query
+    except Exception as e:
+        print(f"Query rewriting failed: {e}. Using original query.")
+        return query

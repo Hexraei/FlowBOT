@@ -21,6 +21,7 @@ class Ticket(Base):
     __tablename__ = "tickets"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String, index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     user_message = Column(Text, nullable=False)
     bot_response = Column(Text, nullable=True)
