@@ -38,7 +38,7 @@ def analyze_ticket(message: str) -> dict:
     
     prompt = f"""
 Analyze the following customer message and return a JSON object with these EXACT keys:
-- "intent": Must be one of: "business_enquiry", "partnership", "contact_info", "careers", "internship_programs", "open_opportunities", "hiring_process", "service_inquiry", or "other".
+- "intent": Must be one of: "business_enquiry", "partnership", "contact_info", "careers", "internship_programs", "open_opportunities", "hiring_process", "service_inquiry", "resolved", or "other".
 - "summary": A concise, one-sentence summary of what the customer wants.
 - "severity": Must be "high", "medium", or "low". High is for severe errors, billing complaints, or critical business blockers.
 - "sentiment": Must be "positive", "neutral", "negative", or "frustrated".
@@ -94,6 +94,13 @@ def rule_based_fallback_analysis(message: str) -> dict:
             
     import re
     
+    # Resolution detection keywords
+    is_resolution = any(kw in msg_lower for kw in [
+        "just kidding", "nevermind", "it is working", "working now", "resolved", 
+        "fixed now", "fixed it", "solved", "cancel query", "all good", "it works", 
+        "no problem", "never mind", "already working"
+    ])
+    
     # Bug / technical issue detection keywords
     has_error_kw = any(kw in msg_lower for kw in [
         "error", "fail", "broken", "500", "bug", "crash", "issue", "problem", 
@@ -106,7 +113,13 @@ def rule_based_fallback_analysis(message: str) -> dict:
         "portal", "screen", "click", "form", "input", "load"
     ])
     
-    if "hiring" in msg_lower or "job" in msg_lower or "recruit" in msg_lower:
+    if is_resolution:
+        intent = "resolved"
+        component = "General"
+        severity = "low"
+        urgency = 1
+        sentiment = "positive"
+    elif "hiring" in msg_lower or "job" in msg_lower or "recruit" in msg_lower:
         intent = "hiring_process"
         component = "Careers"
     elif re.search(r'\bintern(ship)?s?\b', msg_lower):
@@ -164,6 +177,11 @@ def generate_heuristic_response(message: str, analysis: dict) -> str:
     intent = analysis.get("intent", "other")
     sentiment = analysis.get("sentiment", "neutral")
     severity = analysis.get("severity", "low")
+    
+    if intent == "resolved":
+        return (
+            "Glad to hear everything is working now! Let me know if you have any other questions or need further assistance."
+        )
     
     # Check if this is a technical issue/bug report (service_inquiry/other with negative/frustrated sentiment or medium/high severity)
     is_technical_issue = (

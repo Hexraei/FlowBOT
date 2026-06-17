@@ -83,6 +83,15 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
         if is_high_priority or has_contact_info or is_fallback_triggered:
             status = "pending_review"
             
+        # If user explicitly states the issue is resolved, auto-resolve all pending tickets in this session
+        if analysis.get("intent") == "resolved" and req.session_id:
+            status = "resolved"
+            db.query(Ticket).filter(
+                Ticket.session_id == req.session_id,
+                Ticket.status == "pending_review"
+            ).update({"status": "resolved"})
+            db.commit()
+            
         # 4. Create Ticket record
         ticket = Ticket(
             session_id=req.session_id,
