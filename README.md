@@ -131,3 +131,9 @@ d:\SupportBOT\
 - **Empathetic Heuristic Responses**: Updated `generate_heuristic_response` to check for technical issues and apologize + log technical complaints immediately, avoiding generic marketing pitches for broken systems.
 - **Ollama Timeout Resolution**: Increased the REST request timeout limit from 25 seconds to 60 seconds in `call_ollama`. Added `"keep_alive": "1h"` to the request payload so that the local Ollama instance keeps the Gemma model weights loaded in system RAM for 1 hour, preventing cold-start delays.
 
+#### 4. Fuzzy Spelling Engine & Conversational Auto-Resolution
+- **Fuzzy Spelling Corrector**: Built an edit-distance fuzzy spelling correction engine utilizing the standard Python library `difflib` and a comprehensive support dictionary covering errors, interface elements, intents, and resolution keywords. Misspelled words (e.g. `webstie` -> `website`, `intrnshp` -> `internship`, `crsh` -> `crash`, `flznt` -> `flowzint`) are corrected while preserving original casing.
+- **Dynamic Auto-Resolution**: Refined the `/api/chat` route in `backend/app/main.py` to identify user resolutions (intent `resolved`). When a user resolves an issue, a database hook instantly updates all pending reviews in the same session to `resolved`, clearing the admin review queue in real-time.
+- **Automated Verification**: Created `backend/test_fuzzy_spelling.py` to verify unit spelling corrections and end-to-end API session resolution behavior.
+
+

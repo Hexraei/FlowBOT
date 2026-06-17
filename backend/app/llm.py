@@ -1,6 +1,36 @@
 import json
 import requests
+import difflib
 from app.config import settings
+
+SUPPORT_DICTIONARY = [
+    "error", "fail", "broken", "bug", "crash", "issue", "problem", "freeze", "stuck", 
+    "down", "offline", "slow", "load", "blank", "button", "link", "menu", "page", 
+    "site", "website", "app", "portal", "screen", "click", "form", "input", "hiring", 
+    "job", "recruit", "intern", "internship", "partner", "collaboration", "price", 
+    "cost", "quote", "enquiry", "inquire", "flowzint", "nevermind", "resolved", 
+    "solved", "fixed", "kidding", "working", "never", "mind", "urgent", "asap", 
+    "emergency"
+]
+
+def fuzzy_correct_token(token: str, threshold: float = 0.7) -> str:
+    """Corrects a token using difflib.get_close_matches if a close match is found in SUPPORT_DICTIONARY."""
+    cleaned_token = token.strip(".,;:?!\"'()[]{}")
+    if not cleaned_token or len(cleaned_token) < 3:
+        return token
+    
+    matches = difflib.get_close_matches(cleaned_token.lower(), SUPPORT_DICTIONARY, n=1, cutoff=threshold)
+    if matches:
+        matched = matches[0]
+        if cleaned_token.isupper():
+            matched = matched.upper()
+        elif cleaned_token[0].isupper():
+            matched = matched.capitalize()
+            
+        prefix = token[:token.find(cleaned_token)]
+        suffix = token[token.find(cleaned_token) + len(cleaned_token):]
+        return prefix + matched + suffix
+    return token
 
 def call_ollama(prompt: str, system_prompt: str = None, format_json: bool = True) -> str:
     """Helper to query the local Ollama instance running Gemma."""
@@ -76,7 +106,9 @@ JSON Response:
 
 def rule_based_fallback_analysis(message: str) -> dict:
     """Rule-based backup analyser when Ollama is offline or returns invalid JSON."""
-    msg_lower = message.lower()
+    # Pre-process message using fuzzy spelling engine
+    corrected_message = " ".join(fuzzy_correct_token(tok) for tok in message.split())
+    msg_lower = corrected_message.lower()
     
     # Simple keyword heuristics
     intent = "other"
@@ -109,7 +141,7 @@ def rule_based_fallback_analysis(message: str) -> dict:
     ])
     
     is_interface_element = any(kw in msg_lower for kw in [
-        "button", "link", "menu", "page", "site", "website", "webstie", "app", 
+        "button", "link", "menu", "page", "site", "website", "app", 
         "portal", "screen", "click", "form", "input", "load"
     ])
     
@@ -148,7 +180,7 @@ def rule_based_fallback_analysis(message: str) -> dict:
             sentiment = "neutral"
             
     # Explicit override for angry bug reports (caps lock, multiple exclamation marks, or error keywords)
-    if (msg_lower != message and len(message) > 5 and message.isupper()) or "!!!" in message or (has_error_kw and is_interface_element):
+    if (msg_lower != corrected_message and len(corrected_message) > 5 and corrected_message.isupper()) or "!!!" in corrected_message or (has_error_kw and is_interface_element):
         if has_error_kw or "work" in msg_lower or "button" in msg_lower:
             intent = "service_inquiry"
             component = "Web Infrastructure"
@@ -163,7 +195,7 @@ def rule_based_fallback_analysis(message: str) -> dict:
 
     return {
         "intent": intent,
-        "summary": f"Fallback: {message[:60]}...",
+        "summary": f"Fallback: {corrected_message[:60]}...",
         "severity": severity,
         "sentiment": sentiment,
         "probable_component": component,
