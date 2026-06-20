@@ -136,4 +136,23 @@ d:\SupportBOT\
 - **Dynamic Auto-Resolution**: Refined the `/api/chat` route in `backend/app/main.py` to identify user resolutions (intent `resolved`). When a user resolves an issue, a database hook instantly updates all pending reviews in the same session to `resolved`, clearing the admin review queue in real-time.
 - **Automated Verification**: Created `backend/test_fuzzy_spelling.py` to verify unit spelling corrections and end-to-end API session resolution behavior.
 
+### June 20, 2026
+
+#### 1. Performance & Scalability Enhancements
+- **Clustering Embeddings Caching**: Added a persistent `embedding` column to the `Ticket` database model in `backend/app/database.py`, and refactored `clustering.py` to cache embeddings and lazily calculate them for historical records. This optimizes duplicate detection calculations from $O(N)$ to $O(1)$ model operations.
+- **N+1 Database Queries Fix**: Replaced iterative counts in the `/api/clusters` endpoint in `backend/app/main.py` with an optimized single join query using SQLAlchemy `func.count` and `group_by`.
+- **Consolidated Single-Pass LLM Call**: Combined RAG answer generation and structured ticket triage into a single unified prompt in `backend/app/llm.py`, saving an entire LLM call per request and cutting response times by 50% to 66%.
+- **Coreference-Bypass Heuristics**: Bypasses the query rewriting LLM call for direct messages that contain no pronouns referring to history, saving another LLM call for the majority of initial chat requests.
+- **Single-Pass Vector Embedding**: Pre-computes the query message vector once in `main.py` and reuses it for both document retrieval and clustering.
+
+#### 2. RAG Pipeline Upgrades
+- **Recursive Character Splitting Chunker**: Replaced the custom word count chunker in `vector_store.py` with a recursive character splitter (splitting sequentially on `\n\n`, `\n`, `. `, and ` `) to ensure document chunks retain structural and semantic cohesion.
+- **Parameterization**: Exposed RAG settings (`RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`, `RAG_TOP_K`) in `backend/app/config.py` for easy hyperparameter tuning.
+
+#### 3. Bug Corrections & Code Quality Hardening
+- **Integration Handoff Failures**: Upgraded `handoff.py` and `main.py` to propagate GitHub/Discord API failure errors (like HTTP 401 Bad Credentials) back as HTTP 500 to the frontend instead of silently completing handoffs with mock URLs.
+- **SSRF Crawler Hardening**: Refactored `backend/audit_scraper.py` to validate crawl domains strictly, preventing out-of-domain traversal.
+- **CSS Loading Spin Animation**: Added `.animate-spin` classes in Vanilla CSS to `index.css` to fix the static dashboard refresh spinner.
+- **Modernized API Methods**: Replaced deprecated Pydantic `.dict()` calls with `.model_dump()` and updated deprecated timezone-naive `datetime.utcnow()` fields.
+
 

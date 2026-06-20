@@ -17,27 +17,69 @@ collection = chroma_client.get_or_create_collection(
     metadata={"hnsw:space": "cosine"}
 )
 
-def chunk_text(text: str, max_chunk_size: int = 1000, overlap: int = 200) -> list[str]:
-    """Helper to chunk text with overlap."""
-    words = text.split()
-    chunks = []
-    current_chunk = []
-    current_length = 0
-    
-    for word in words:
-        current_chunk.append(word)
-        current_length += len(word) + 1  # count space
-        if current_length >= max_chunk_size:
-            chunks.append(" ".join(current_chunk))
-            # Keep overlap: keep last N words
-            overlap_words = current_chunk[-max_chunk_size // (5 * 5):] # simple heuristic
-            current_chunk = list(overlap_words)
-            current_length = sum(len(w) + 1 for w in current_chunk)
-            
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
+def chunk_text(text: str, max_chunk_size: int = None, overlap: int = None) -> list[str]:
+    """
+    Recursively splits text into chunks of max_chunk_size with overlap.
+    Tries splitting on paragraphs (\n\n), newlines (\n), sentences (. ), and spaces (words) in order.
+    """
+    if max_chunk_size is None:
+        max_chunk_size = settings.RAG_CHUNK_SIZE
+    if overlap is None:
+        overlap = settings.RAG_CHUNK_OVERLAP
         
-    return chunks
+    separators = ["\n\n", "\n", ". ", " ", ""]
+    
+    def split_recursive(text_to_split: str, current_sep_idx: int) -> list[str]:
+        if len(text_to_split) <= max_chunk_size:
+            return [text_to_split]
+            
+        if current_sep_idx >= len(separators):
+            # Hard split at chunk boundary
+            return [text_to_split[i : i + max_chunk_size] for i in range(0, len(text_to_split), max_chunk_size)]
+            
+        separator = separators[current_sep_idx]
+        splits = text_to_split.split(separator) if separator else list(text_to_split)
+        
+        chunks = []
+        current_chunk = []
+        current_len = 0
+        
+        for part in splits:
+            part_len = len(part) + (len(separator) if current_chunk else 0)
+            
+            # If a single part exceeds max_chunk_size, split recursively with next separator
+            if part_len > max_chunk_size:
+                if current_chunk:
+                    chunks.append(separator.join(current_chunk))
+                    current_chunk = []
+                    current_len = 0
+                sub_chunks = split_recursive(part, current_sep_idx + 1)
+                chunks.extend(sub_chunks)
+                continue
+                
+            if current_len + part_len > max_chunk_size:
+                chunks.append(separator.join(current_chunk))
+                # Retain overlap: backtrack from current_chunk to fill up overlap character count
+                overlap_chunk = []
+                overlap_len = 0
+                for prev in reversed(current_chunk):
+                    prev_len = len(prev) + (len(separator) if overlap_chunk else 0)
+                    if overlap_len + prev_len > overlap:
+                        break
+                    overlap_chunk.insert(0, prev)
+                    overlap_len += prev_len
+                current_chunk = overlap_chunk
+                current_len = overlap_len
+                
+            current_chunk.append(part)
+            current_len += part_len
+            
+        if current_chunk:
+            chunks.append(separator.join(current_chunk))
+            
+        return chunks
+
+    return split_recursive(text, 0)
 
 def index_knowledge_base():
     """Reads all text files in the knowledge_base directory, chunks them, and stores in Chroma."""
@@ -122,8 +164,10 @@ def index_knowledge_base():
     else:
         print("No document chunks to index.")
 
-def retrieve_relevant_docs(query: str, limit: int = 3) -> list[dict]:
+def retrieve_relevant_docs(query: str, limit: int = None) -> list[dict]:
     """Retrieves relevant document chunks from Chroma given a search query."""
+    if limit is None:
+        limit = settings.RAG_TOP_K
     try:
         results = collection.query(
             query_texts=[query],
@@ -147,4 +191,33 @@ def retrieve_relevant_docs(query: str, limit: int = 3) -> list[dict]:
         return retrieved_docs
     except Exception as e:
         print(f"Error querying Chroma vector store: {e}")
+        return []
+
+def retrieve_relevant_docs_by_vector(vector: list[float], limit: int = None) -> list[dict]:
+    """Retrieves relevant document chunks from Chroma given a pre-computed query vector."""
+    if limit is None:
+        limit = settings.RAG_TOP_K
+    try:
+        results = collection.query(
+            query_embeddings=[vector],
+            n_results=limit
+        )
+        
+        retrieved_docs = []
+        if results and results.get("documents") and results["documents"][0]:
+            docs = results["documents"][0]
+            metas = results["metadatas"][0]
+            distances = results["distances"][0] if "distances" in results else [0.0] * len(docs)
+            
+            for doc, meta, dist in zip(docs, metas, distances):
+                retrieved_docs.append({
+                    "content": doc,
+                    "title": meta.get("title", ""),
+                    "url": meta.get("url", ""),
+                    "source": meta.get("source", ""),
+                    "score": 1.0 - dist # Cosine similarity score
+                })
+        return retrieved_docs
+    except Exception as e:
+        print(f"Error querying Chroma vector store by vector: {e}")
         return []

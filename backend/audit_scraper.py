@@ -121,7 +121,8 @@ def main():
                 for link in link_extractor.links:
                     parsed_link = urllib.parse.urlparse(link)
                     # Only follow links on same domain and within .html files (or directory index)
-                    if domain_filter in parsed_link.netloc:
+                    netloc = parsed_link.netloc.lower()
+                    if netloc == domain_filter or netloc == f"www.{domain_filter}":
                         if parsed_link.path.endswith('.html') or parsed_link.path == '' or parsed_link.path == '/':
                             if link not in visited and link not in to_visit:
                                 to_visit.append(link)

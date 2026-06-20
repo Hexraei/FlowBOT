@@ -52,22 +52,23 @@ def trigger_github_handoff(ticket_id: str, db: Session) -> str:
                 print(f"Handoff: Real GitHub issue created: {issue_url}")
                 return issue_url
             else:
-                print(f"Handoff Error: GitHub API returned status {response.status_code}: {response.text}")
+                raise Exception(f"GitHub API returned status {response.status_code}: {response.text}")
         except Exception as e:
             print(f"Handoff Error: Failed to call GitHub API: {e}")
-            
-    # Placeholder Mode Fallback
-    print(f"\n[PLACEHOLDER HANDOFF - GITHUB ISSUE]")
-    print(f"Target Repository : {settings.GITHUB_REPO}")
-    print(f"Issue Title       : {title}")
-    print(f"Issue Body        :\n{body}")
-    print(f"[END GITHUB PLACEHOLDER]\n")
-    
-    mock_url = f"https://github.com/{settings.GITHUB_REPO}/issues/mock-{ticket.id[:8]}"
-    ticket.github_issue_url = mock_url
-    ticket.status = "handoff_completed"
-    db.commit()
-    return mock_url
+            raise e
+    else:
+        # Placeholder Mode Fallback
+        print(f"\n[PLACEHOLDER HANDOFF - GITHUB ISSUE]")
+        print(f"Target Repository : {settings.GITHUB_REPO}")
+        print(f"Issue Title       : {title}")
+        print(f"Issue Body        :\n{body}")
+        print(f"[END GITHUB PLACEHOLDER]\n")
+        
+        mock_url = f"https://github.com/{settings.GITHUB_REPO}/issues/mock-{ticket.id[:8]}"
+        ticket.github_issue_url = mock_url
+        ticket.status = "handoff_completed"
+        db.commit()
+        return mock_url
 
 def trigger_discord_handoff(ticket_id: str, db: Session) -> bool:
     """
@@ -106,16 +107,17 @@ def trigger_discord_handoff(ticket_id: str, db: Session) -> bool:
                 print("Handoff: Discord notification sent successfully.")
                 return True
             else:
-                print(f"Handoff Error: Discord API returned status {response.status_code}: {response.text}")
+                raise Exception(f"Discord API returned status {response.status_code}: {response.text}")
         except Exception as e:
             print(f"Handoff Error: Failed to post to Discord webhook: {e}")
-            
-    # Placeholder Mode Fallback
-    print(f"\n[PLACEHOLDER HANDOFF - DISCORD ALERT]")
-    print(f"Webhook URL       : (Empty / Placeholder)")
-    print(f"Discord Payload   : {payload}")
-    print(f"[END DISCORD PLACEHOLDER]\n")
-    
-    ticket.discord_notified = True
-    db.commit()
-    return True
+            raise e
+    else:
+        # Placeholder Mode Fallback
+        print(f"\n[PLACEHOLDER HANDOFF - DISCORD ALERT]")
+        print(f"Webhook URL       : (Empty / Placeholder)")
+        print(f"Discord Payload   : {payload}")
+        print(f"[END DISCORD PLACEHOLDER]\n")
+        
+        ticket.discord_notified = True
+        db.commit()
+        return True

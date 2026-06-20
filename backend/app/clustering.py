@@ -18,15 +18,23 @@ def cosine_similarity(v1, v2):
 
 def find_or_create_cluster(ticket: Ticket, db: Session) -> str:
     """
-    Computes embedding of the ticket message, finds the most similar existing ticket.
-    If similarity > CLUSTERING_THRESHOLD, groups them under the same cluster.
+    Computes embedding of the ticket message, caches it, finds the most similar existing ticket
+    using cached embeddings, and groups them under the same cluster if above threshold.
     Returns the cluster_id.
     """
-    # 1. Embed the new ticket message
+    # 1. Retrieve or embed the new ticket message and cache it
     try:
-        new_vector = embedding_fn([ticket.user_message])[0]
+        if ticket.embedding:
+            new_vector = json.loads(ticket.embedding)
+        else:
+            new_vector = embedding_fn([ticket.user_message])[0]
+            new_vector_list = new_vector.tolist() if hasattr(new_vector, "tolist") else list(new_vector)
+            ticket.embedding = json.dumps(new_vector_list)
+            db.add(ticket)
+            db.commit()
+            db.refresh(ticket)
     except Exception as e:
-        print(f"Clustering: Failed to embed new ticket message: {e}")
+        print(f"Clustering: Failed to retrieve or cache ticket embedding: {e}")
         return None
         
     # 2. Query all existing tickets that have a user_message and are not this ticket
@@ -39,23 +47,36 @@ def find_or_create_cluster(ticket: Ticket, db: Session) -> str:
         print("Clustering: No existing tickets to compare with.")
         return None
         
-    # 3. Embed all existing tickets (on the fly for MVP simplicity)
-    try:
-        messages = [t.user_message for t in existing_tickets]
-        existing_vectors = embedding_fn(messages)
-    except Exception as e:
-        print(f"Clustering: Failed to embed existing messages: {e}")
-        return None
+    # 3. For any existing tickets missing their cached embedding, compute them lazily in bulk
+    missing_tickets = [t for t in existing_tickets if t.embedding is None]
+    if missing_tickets:
+        try:
+            print(f"Clustering: Lazily computing embeddings for {len(missing_tickets)} historical tickets...")
+            missing_msgs = [t.user_message for t in missing_tickets]
+            missing_vectors = embedding_fn(missing_msgs)
+            for t, vec in zip(missing_tickets, missing_vectors):
+                vec_list = vec.tolist() if hasattr(vec, "tolist") else list(vec)
+                t.embedding = json.dumps(vec_list)
+                db.add(t)
+            db.commit()
+        except Exception as e:
+            print(f"Clustering: Failed to compute lazy embeddings for historical tickets: {e}")
         
-    # 4. Find the highest similarity
+    # 4. Find the highest similarity using cached embeddings
     best_score = -1.0
     best_match_ticket = None
     
-    for t, vec in zip(existing_tickets, existing_vectors):
-        sim = cosine_similarity(new_vector, vec)
-        if sim > best_score:
-            best_score = sim
-            best_match_ticket = t
+    for t in existing_tickets:
+        if not t.embedding:
+            continue
+        try:
+            vec = json.loads(t.embedding)
+            sim = cosine_similarity(new_vector, vec)
+            if sim > best_score:
+                best_score = sim
+                best_match_ticket = t
+        except Exception as e:
+            print(f"Clustering: Failed to parse cached embedding for ticket {t.id}: {e}")
             
     print(f"Clustering: Best match found with similarity score: {best_score:.4f}")
     

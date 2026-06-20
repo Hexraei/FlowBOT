@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", os.path.join(BACKEND_DIR, "instance", "chroma_db"))
     KNOWLEDGE_BASE_DIR: str = os.getenv("KNOWLEDGE_BASE_DIR", os.path.join(PROJECT_ROOT, "knowledge_base"))
     
+    # RAG settings
+    RAG_CHUNK_SIZE: int = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
+    RAG_CHUNK_OVERLAP: int = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
+    RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", "3"))
+    
     # Clustering Settings
     CLUSTERING_THRESHOLD: float = 0.80  # Cosine similarity threshold for duplicate detection
     

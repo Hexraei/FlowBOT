@@ -13,7 +13,7 @@ class Cluster(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     
     tickets = relationship("Ticket", back_populates="cluster")
 
@@ -22,7 +22,7 @@ class Ticket(Base):
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     session_id = Column(String, index=True, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     user_message = Column(Text, nullable=False)
     bot_response = Column(Text, nullable=True)
     
@@ -38,6 +38,7 @@ class Ticket(Base):
     
     # Relationships & Metadata
     cluster_id = Column(String, ForeignKey("clusters.id"), nullable=True)
+    embedding = Column(Text, nullable=True)  # Stores JSON string of the float embedding vector
     status = Column(String, default="pending_review") # pending_review, handoff_completed, resolved, ignored
     
     # Downstream integrations

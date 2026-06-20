@@ -2,6 +2,7 @@ import json
 import requests
 import difflib
 from app.config import settings
+from app.vector_store import retrieve_relevant_docs
 
 SUPPORT_DICTIONARY = [
     "error", "fail", "broken", "bug", "crash", "issue", "problem", "freeze", "stuck", 
@@ -282,7 +283,6 @@ def generate_grounded_response(message: str, analysis: dict, history: list[dict]
         "and routed it to the FlowZint support team for a manual response."
     )
     
-    from app.vector_store import retrieve_relevant_docs
     
     # 1. Fetch relevant docs from Chroma
     docs = retrieve_relevant_docs(message, limit=3)
@@ -400,3 +400,126 @@ Standalone Search Query:
     except Exception as e:
         print(f"Query rewriting failed: {e}. Using original query.")
         return query
+
+import re
+
+PRONOUNS_HEURISTIC = {"it", "this", "that", "they", "these", "those", "he", "she", "his", "her", "him", "them", "here", "there", "then", "its", "their"}
+
+def needs_coreference_resolution(query: str) -> bool:
+    """Returns True if the query contains pronouns that likely require conversation history to resolve."""
+    words = set(re.findall(r'\b\w+\b', query.lower()))
+    return not words.isdisjoint(PRONOUNS_HEURISTIC)
+
+def generate_consolidated_response(message: str, history: list[dict] = None) -> tuple[str, dict]:
+    """
+    Consolidates document retrieval, triage classification, and RAG generation into a single pipeline.
+    Queries ChromaDB and then makes exactly ONE Ollama LLM call to return both the response and triage stats.
+    """
+    # 1. Fetch relevant docs from Chroma
+    docs = retrieve_relevant_docs(message, limit=settings.RAG_TOP_K)
+    
+    # 2. Check if we have documents and if they are relevant
+    if not docs or max(d["score"] for d in docs) < 0.35:
+        print(f"Consolidated RAG: Similarity score too low. Using fallback heuristic response.")
+        analysis = rule_based_fallback_analysis(message)
+        bot_response = generate_heuristic_response(message, analysis)
+        return bot_response, analysis
+        
+    # 3. Construct consolidated prompt for single-pass RAG + Classification
+    context_str = "\n\n".join(
+        f"Source: {d['title']} ({d['url']})\nContent: {d['content']}" 
+        for d in docs
+    )
+    
+    history_str = ""
+    if history:
+        for msg in history:
+            role = "User" if msg.get("sender") == "user" else "Assistant"
+            history_str += f"{role}: {msg.get('text')}\n"
+            
+    system_prompt = (
+        "You are the FlowZint AI Concierge, a polite and professional customer support assistant. "
+        "Your goal is to answer the user question using the provided facts and return a JSON object "
+        "containing both the answer and the ticket triage metadata. You must respond ONLY with "
+        "a valid JSON object. Do not include any text outside the JSON."
+    )
+    
+    prompt = f"""
+Analyze the customer message, query facts, and return a JSON object with these EXACT keys:
+- "answer": A natural, direct customer support response using the Provided Facts. Do NOT use phrases like "according to the facts" or "based on the context". If the facts do not contain the answer, set this key EXACTLY to: "I am not sure about that detail."
+- "intent": Must be one of the following exact categories:
+  * "business_enquiry" (custom SaaS, pricing, or enterprise platform design requests)
+  * "partnership" (collaboration or corporate partnership requests)
+  * "contact_info" (email, address, or phone contact queries)
+  * "careers" (job postings, open positions)
+  * "internship_programs" (questions about the 30-day freshers/student corporate internship details, tracks, or registration fee)
+  * "open_opportunities" (available jobs)
+  * "hiring_process" (stages of hiring)
+  * "service_inquiry" (general tech services, AI/web/app capabilities)
+  * "resolved" (user explicitly confirms their problem is resolved/working now, e.g. "it's working now", "nevermind")
+  * "other" (general conversation or other queries)
+
+Classification Rules:
+1. If the message is about student/fresher corporate internships, training tracks, registration fees, or learning curricula, the intent MUST be classified as "internship_programs" (do not use "service_inquiry" or "careers").
+2. If the message is about general hiring, recruiting documents, job postings, or employment, the intent is "careers".
+3. If the message is about custom software development, custom SaaS platforms, or commercial pricing requests, the intent is "business_enquiry".
+
+- "summary": A concise, one-sentence summary of what the customer wants.
+- "severity": Must be "high", "medium", or "low". Use "low" for general questions, info requests, or resolved queries. Use "medium" for minor bugs/complaints. Use "high" only for critical errors, outage issues, or severe blockers.
+- "sentiment": Must be "positive", "neutral", "negative", or "frustrated". General questions are "neutral".
+- "probable_component": The module or area of the request (e.g., "AI & Automation", "SaaS Systems", "Careers", "Web Infrastructure", "Billing", "General").
+- "urgency": An integer score from 1 (lowest) to 5 (highest). General questions and info requests must be 1, 2, or 3. Only urgent escalations or outages should be 4 or 5.
+- "contact_details": Extracted email, phone, or name if explicitly provided, otherwise "".
+- "confidence_score": A float from 0.0 to 1.0.
+
+Provided Facts:
+{context_str}
+
+Conversation History:
+{history_str}
+
+Customer Message:
+\"\"\"
+{message}
+\"\"\"
+
+JSON Response:
+"""
+    try:
+        response_text = call_ollama(prompt, system_prompt=system_prompt, format_json=True)
+        data = json.loads(response_text)
+        
+        analysis = {
+            "intent": data.get("intent", "other"),
+            "summary": data.get("summary", message[:100] + "..."),
+            "severity": data.get("severity", "low"),
+            "sentiment": data.get("sentiment", "neutral"),
+            "probable_component": data.get("probable_component", "General"),
+            "urgency": int(data.get("urgency", 3)),
+            "contact_details": data.get("contact_details", ""),
+            "confidence_score": float(data.get("confidence_score", 0.5))
+        }
+        
+        bot_response = data.get("answer", "").strip()
+        lower_resp = bot_response.lower()
+        
+        unknown_indicators = [
+            "don't know", "do not know", "cannot find", "not sure", "does not contain",
+            "unable to answer", "no information", "cannot be answered", "not mentioned",
+            "unable to find", "not provided", "not discussed", "not cover",
+            "not included", "unable to provide", "no mention", "do not have"
+        ]
+        
+        if (any(ind in lower_resp for ind in unknown_indicators) or 
+            bot_response == "I am not sure about that detail." or 
+            not bot_response):
+            print("Consolidated RAG: LLM indicated it doesn't know. Triggering fallback response.")
+            bot_response = generate_heuristic_response(message, analysis)
+            
+        return bot_response, analysis
+        
+    except Exception as e:
+        print(f"Consolidated RAG/Analysis failed: {e}. Triggering fallback flows.")
+        analysis = rule_based_fallback_analysis(message)
+        bot_response = generate_heuristic_response(message, analysis)
+        return bot_response, analysis

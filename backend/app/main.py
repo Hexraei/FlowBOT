@@ -6,7 +6,13 @@ from typing import List, Optional
 from app.config import settings
 from app.database import get_db, init_db, Ticket, Cluster
 from app.schemas import TicketRequest, TicketResponse, TicketUpdate, ClusterResponse
-from app.llm import analyze_ticket, generate_grounded_response
+from app.llm import (
+    analyze_ticket,
+    generate_grounded_response,
+    rewrite_query_with_history,
+    needs_coreference_resolution,
+    generate_consolidated_response
+)
 from app.clustering import find_or_create_cluster
 from app.handoff import trigger_github_handoff, trigger_discord_handoff
 
@@ -40,6 +46,17 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Message cannot be empty")
         
     try:
+        # Pre-compute message embedding to reuse for clustering and optimize performance
+        from app.vector_store import embedding_fn
+        import json
+        try:
+            user_vector = embedding_fn([message])[0]
+            user_vector_list = user_vector.tolist() if hasattr(user_vector, "tolist") else list(user_vector)
+            message_embedding_json = json.dumps(user_vector_list)
+        except Exception as e:
+            print(f"Main API: Failed to pre-compute message embedding: {e}")
+            message_embedding_json = None
+
         # Fetch conversation history if session_id is provided
         history_list = []
         if req.session_id:
@@ -55,15 +72,14 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
                 if t.bot_response:
                     history_list.append({"sender": "assistant", "text": t.bot_response})
                     
-        # Rewrite query to resolve coreferences if history exists
-        from app.llm import rewrite_query_with_history
-        rewritten_query = rewrite_query_with_history(message, history_list)
+        # Rewrite query to resolve coreferences if history exists and contains pronouns
+        if history_list and needs_coreference_resolution(message):
+            rewritten_query = rewrite_query_with_history(message, history_list)
+        else:
+            rewritten_query = message
         
-        # 1. Run LLM Structured Analysis on rewritten query
-        analysis = analyze_ticket(rewritten_query)
-        
-        # 2. Generate Grounded Support Response (RAG/Fallback) using history
-        bot_response = generate_grounded_response(rewritten_query, analysis, history_list)
+        # 1 & 2. Run consolidated Triage classification and RAG Generation in a single LLM request
+        bot_response, analysis = generate_consolidated_response(rewritten_query, history_list)
         
         # 3. Apply Actionable Ticket Escalation Filtering:
         # Only escalate if the query is high priority, includes contact details, or fails RAG.
@@ -105,6 +121,7 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
             urgency=analysis.get("urgency"),
             contact_details=analysis.get("contact_details"),
             confidence_score=analysis.get("confidence_score"),
+            embedding=message_embedding_json,
             status=status
         )
         db.add(ticket)
@@ -123,7 +140,7 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         print(f"Error handling customer message: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal server error occurred while processing your request.")
 
 @app.get("/api/tickets", response_model=List[TicketResponse])
 def get_all_tickets(
@@ -159,7 +176,7 @@ def update_ticket_review(ticket_id: str, payload: TicketUpdate, db: Session = De
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
         
-    update_data = payload.dict(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(ticket, key, value)
         
@@ -178,25 +195,42 @@ def trigger_ticket_handoff(ticket_id: str, db: Session = Depends(get_db)):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
         
-    # Trigger integrations
-    github_url = trigger_github_handoff(ticket_id, db)
-    discord_success = trigger_discord_handoff(ticket_id, db)
-    
-    db.refresh(ticket)
-    return {
-        "status": "handoff_processed",
-        "github_issue_url": ticket.github_issue_url,
-        "discord_notified": ticket.discord_notified,
-        "ticket_status": ticket.status
-    }
+    try:
+        # Trigger integrations
+        github_url = trigger_github_handoff(ticket_id, db)
+        if settings.GITHUB_TOKEN and not github_url:
+            raise Exception("Failed to obtain GitHub issue URL.")
+            
+        discord_success = trigger_discord_handoff(ticket_id, db)
+        if settings.DISCORD_WEBHOOK_URL and not discord_success:
+            raise Exception("Failed to send Discord alert notification.")
+            
+        db.refresh(ticket)
+        return {
+            "status": "handoff_processed",
+            "github_issue_url": ticket.github_issue_url,
+            "discord_notified": ticket.discord_notified,
+            "ticket_status": ticket.status
+        }
+    except Exception as e:
+        db.rollback()
+        print(f"Handoff integration failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Handoff integration failed: {str(e)}")
 
 @app.get("/api/clusters", response_model=List[ClusterResponse])
 def get_all_clusters(db: Session = Depends(get_db)):
-    """Retrieves all clusters along with the count of tickets associated with each."""
-    clusters = db.query(Cluster).all()
+    from sqlalchemy import func
+    
+    # Query clusters and their ticket counts in one join query to prevent N+1 query overhead
+    cluster_counts = (
+        db.query(Cluster, func.count(Ticket.id).label("ticket_count"))
+        .outerjoin(Ticket, Ticket.cluster_id == Cluster.id)
+        .group_by(Cluster.id)
+        .all()
+    )
+    
     results = []
-    for c in clusters:
-        count = db.query(Ticket).filter(Ticket.cluster_id == c.id).count()
+    for c, count in cluster_counts:
         results.append(
             ClusterResponse(
                 id=c.id,
