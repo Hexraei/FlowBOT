@@ -1,12 +1,72 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, X, Bot, Sparkles } from 'lucide-react';
+import { MessageSquare, Send, X, Bot, Sparkles, AlertCircle } from 'lucide-react';
 
 interface Message {
   id: string;
   text: string;
-  sender: 'user' | 'bot';
+  sender: 'user' | 'bot' | 'agent' | 'system';
+  agentName?: string;
   timestamp: Date;
 }
+
+const mapTicketsToMessages = (tickets: any[]) => {
+  const list: Message[] = [
+    {
+      id: 'welcome',
+      text: "Hello! I am the FlowZint AI Concierge. How can I assist you with our SaaS systems, enterprise AI automation, or careers today?",
+      sender: 'bot',
+      timestamp: new Date(tickets[0]?.created_at || Date.now())
+    }
+  ];
+  
+  let takeoverFound = false;
+  let currentAgent = '';
+
+  tickets.forEach(t => {
+    if (t.is_taken_over) {
+      takeoverFound = true;
+      if (t.agent_name) {
+        currentAgent = t.agent_name;
+      }
+    }
+
+    if (t.sender_type === 'system') {
+      list.push({
+        id: t.id,
+        text: t.user_message,
+        sender: 'system',
+        timestamp: new Date(t.created_at)
+      });
+    } else if (t.sender_type === 'agent') {
+      list.push({
+        id: t.id,
+        text: t.user_message,
+        sender: 'agent',
+        agentName: t.agent_name || currentAgent,
+        timestamp: new Date(t.created_at)
+      });
+    } else {
+      // User message
+      list.push({
+        id: t.id + '-user',
+        text: t.user_message,
+        sender: 'user',
+        timestamp: new Date(t.created_at)
+      });
+      // Bot response (if any)
+      if (t.bot_response) {
+        list.push({
+          id: t.id + '-bot',
+          text: t.bot_response,
+          sender: 'bot',
+          timestamp: new Date(t.created_at)
+        });
+      }
+    }
+  });
+
+  return { list, takeoverFound, currentAgent };
+};
 
 export const ChatWidget: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -28,6 +88,8 @@ export const ChatWidget: React.FC = () => {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isTakenOver, setIsTakenOver] = useState(false);
+  const [agentName, setAgentName] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -35,11 +97,39 @@ export const ChatWidget: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // Polling loop to fetch messages from DB and detect human takeover
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const pollMessages = async () => {
+      try {
+        const response = await fetch(`http://localhost:8000/api/tickets/session/${sessionId}/messages`);
+        if (response.ok) {
+          const tickets = await response.json();
+          if (tickets.length > 0) {
+            const { list, takeoverFound, currentAgent } = mapTicketsToMessages(tickets);
+            setMessages(list);
+            setIsTakenOver(takeoverFound);
+            if (takeoverFound) {
+              setAgentName(currentAgent);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error polling customer messages:', err);
+      }
+    };
+
+    pollMessages();
+    const interval = setInterval(pollMessages, 2000);
+    return () => clearInterval(interval);
+  }, [isOpen, sessionId]);
+
   const handleSend = async (textToSend: string) => {
     const text = textToSend.trim();
     if (!text) return;
 
-    // Add user message
+    // Add user message locally
     const userMsg: Message = {
       id: Date.now().toString(),
       text,
@@ -49,7 +139,9 @@ export const ChatWidget: React.FC = () => {
     
     setMessages(prev => [...prev, userMsg]);
     setInput('');
-    setIsLoading(true);
+    if (!isTakenOver) {
+      setIsLoading(true);
+    }
 
     try {
       const response = await fetch('http://localhost:8000/api/chat', {
@@ -62,24 +154,28 @@ export const ChatWidget: React.FC = () => {
         throw new Error('Server returned an error');
       }
 
-      const data = await response.json();
-      
-      // Add bot response
-      setMessages(prev => [...prev, {
-        id: data.id || Date.now().toString(),
-        text: data.bot_response || "Thank you for reaching out. Your request has been logged.",
-        sender: 'bot',
-        timestamp: new Date()
-      }]);
+      // If takeover is active, we poll for the agent's manual replies, so we do not append bot response
+      if (!isTakenOver) {
+        const data = await response.json();
+        
+        // Add bot response
+        setMessages(prev => [...prev, {
+          id: data.id || Date.now().toString(),
+          text: data.bot_response || "Thank you for reaching out. Your request has been logged.",
+          sender: 'bot',
+          timestamp: new Date()
+        }]);
+      }
     } catch (error) {
       console.error('Chat error:', error);
-      // Friendly fallback error message
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        text: "I'm experiencing a brief connection issue, but your message has been buffered for our operations team. How else can I help?",
-        sender: 'bot',
-        timestamp: new Date()
-      }]);
+      if (!isTakenOver) {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          text: "I'm experiencing a brief connection issue, but your message has been buffered for our operations team. How else can I help?",
+          sender: 'bot',
+          timestamp: new Date()
+        }]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -137,7 +233,9 @@ export const ChatWidget: React.FC = () => {
           <div
             style={{
               padding: '16px',
-              background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.2) 0%, rgba(14, 165, 233, 0.2) 100%)',
+              background: isTakenOver 
+                ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(14, 165, 233, 0.2) 100%)'
+                : 'linear-gradient(135deg, rgba(79, 70, 229, 0.2) 0%, rgba(14, 165, 233, 0.2) 100%)',
               borderBottom: '1px solid var(--border-glass)',
               display: 'flex',
               alignItems: 'center',
@@ -150,19 +248,29 @@ export const ChatWidget: React.FC = () => {
                   width: '36px',
                   height: '36px',
                   borderRadius: '50%',
-                  backgroundColor: 'rgba(79, 70, 229, 0.3)',
+                  backgroundColor: isTakenOver ? 'rgba(16, 185, 129, 0.2)' : 'rgba(79, 70, 229, 0.3)',
+                  border: isTakenOver ? '1px solid rgba(16, 185, 129, 0.3)' : 'none',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  color: isTakenOver ? 'var(--success)' : 'var(--secondary)'
                 }}
               >
-                <Bot size={20} color="var(--secondary)" />
+                {isTakenOver ? (
+                  <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--success)' }}>
+                    {agentName ? agentName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'AG'}
+                  </span>
+                ) : (
+                  <Bot size={20} color="var(--secondary)" />
+                )}
               </div>
               <div>
-                <h3 style={{ fontSize: '15px', fontWeight: '700' }}>FlowZint AI Concierge</h3>
+                <h3 style={{ fontSize: '15px', fontWeight: '700' }}>
+                  {isTakenOver ? `Support with ${agentName || 'Agent'}` : 'FlowZint AI Concierge'}
+                </h3>
                 <p style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--success)' }}></span>
-                  Online
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isTakenOver ? 'var(--success)' : 'var(--success)' }}></span>
+                  {isTakenOver ? 'Agent Connected' : 'Online'}
                 </p>
               </div>
             </div>
@@ -193,45 +301,112 @@ export const ChatWidget: React.FC = () => {
               backgroundColor: 'rgba(7, 10, 19, 0.2)'
             }}
           >
-            {messages.map(msg => (
-              <div
-                key={msg.id}
-                style={{
-                  alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '85%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px'
-                }}
-              >
+            {messages.map((msg, index) => {
+              if (msg.sender === 'system') {
+                return (
+                  <div
+                    key={msg.id || index}
+                    style={{
+                      alignSelf: 'center',
+                      backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid rgba(245, 158, 11, 0.15)',
+                      color: 'var(--warning)',
+                      padding: '6px 14px',
+                      borderRadius: '16px',
+                      fontSize: '11.5px',
+                      fontWeight: '600',
+                      margin: '6px 0',
+                      textAlign: 'center',
+                      maxWidth: '90%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <AlertCircle size={13} />
+                    {msg.text}
+                  </div>
+                );
+              }
+
+              if (msg.sender === 'agent') {
+                return (
+                  <div
+                    key={msg.id || index}
+                    style={{
+                      alignSelf: 'flex-start',
+                      maxWidth: '85%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px'
+                    }}
+                  >
+                    <span style={{ fontSize: '10px', color: 'var(--success)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'var(--success)' }}></span>
+                      {msg.agentName || 'Agent'} (Support Team)
+                    </span>
+                    <div
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: '16px',
+                        borderTopLeftRadius: '4px',
+                        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        color: 'white',
+                        fontSize: '13.5px',
+                        lineHeight: '1.45',
+                        wordBreak: 'break-word'
+                      }}
+                    >
+                      {msg.text}
+                    </div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '0 4px' }}>
+                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                );
+              }
+
+              return (
                 <div
+                  key={msg.id || index}
                   style={{
-                    padding: '12px 16px',
-                    borderRadius: '16px',
-                    borderTopRightRadius: msg.sender === 'user' ? '4px' : '16px',
-                    borderTopLeftRadius: msg.sender === 'bot' ? '4px' : '16px',
-                    backgroundColor: msg.sender === 'user' ? 'var(--primary)' : 'rgba(30, 41, 59, 0.65)',
-                    border: msg.sender === 'bot' ? '1px solid var(--border-glass)' : 'none',
-                    color: 'white',
-                    fontSize: '13.5px',
-                    lineHeight: '1.45',
-                    wordBreak: 'break-word'
-                  }}
-                >
-                  {msg.text}
-                </div>
-                <span
-                  style={{
-                    fontSize: '10px',
-                    color: 'var(--text-muted)',
                     alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-                    padding: '0 4px'
+                    maxWidth: '85%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
                   }}
                 >
-                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-            ))}
+                  <div
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: '16px',
+                      borderTopRightRadius: msg.sender === 'user' ? '4px' : '16px',
+                      borderTopLeftRadius: msg.sender === 'bot' ? '4px' : '16px',
+                      backgroundColor: msg.sender === 'user' ? 'var(--primary)' : 'rgba(30, 41, 59, 0.65)',
+                      border: msg.sender === 'bot' ? '1px solid var(--border-glass)' : 'none',
+                      color: 'white',
+                      fontSize: '13.5px',
+                      lineHeight: '1.45',
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    {msg.text}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      color: 'var(--text-muted)',
+                      alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
+                      padding: '0 4px'
+                    }}
+                  >
+                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              );
+            })}
             {isLoading && (
               <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', alignSelf: 'flex-start', background: 'rgba(30, 41, 59, 0.4)', borderRadius: '16px', border: '1px solid var(--border-glass)' }}>
                 <div style={{ width: '6px', height: '6px', backgroundColor: 'var(--text-secondary)', borderRadius: '50%', animation: 'fadeIn 1s infinite alternate' }}></div>
@@ -243,7 +418,7 @@ export const ChatWidget: React.FC = () => {
           </div>
 
           {/* Quick Suggestions */}
-          {messages.length === 1 && (
+          {messages.length === 1 && !isTakenOver && (
             <div style={{ padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid var(--border-glass)', backgroundColor: 'rgba(7, 10, 19, 0.3)' }}>
               <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Sparkles size={12} color="var(--secondary)" />
@@ -294,7 +469,7 @@ export const ChatWidget: React.FC = () => {
           >
             <input
               type="text"
-              placeholder="Ask FlowZint AI Concierge..."
+              placeholder={isTakenOver ? "Type live message to agent..." : "Ask FlowZint AI Concierge..."}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSend(input)}

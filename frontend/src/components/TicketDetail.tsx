@@ -3,6 +3,7 @@ import { X, Check, ArrowRight, MessageSquare, User, BadgeAlert } from 'lucide-re
 
 interface Ticket {
   id: string;
+  session_id: string | null;
   created_at: string;
   user_message: string;
   bot_response: string;
@@ -23,9 +24,10 @@ interface TicketDetailProps {
   ticketId: string;
   onClose: () => void;
   onUpdate: () => void;
+  onJoinChat: (sessionId: string) => void;
 }
 
-export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, onUpdate }) => {
+export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, onUpdate, onJoinChat }) => {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -116,6 +118,31 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, o
       alert('Failed to trigger handoffs.');
     } finally {
       setEscalating(false);
+    }
+  };
+
+  const [joiningChat, setJoiningChat] = useState(false);
+
+  const handleJoinChat = async () => {
+    if (!ticket || !ticket.session_id) return;
+    setJoiningChat(true);
+    try {
+      const agentName = localStorage.getItem('flowbot_agent_name') || 'Support Agent';
+      const response = await fetch(`http://localhost:8000/api/tickets/session/${ticket.session_id}/takeover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_name: agentName })
+      });
+      if (response.ok) {
+        onJoinChat(ticket.session_id);
+      } else {
+        alert('Failed to takeover session.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to takeover API.');
+    } finally {
+      setJoiningChat(false);
     }
   };
 
@@ -405,6 +432,32 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, o
             <ArrowRight size={18} />
             {escalating ? 'Processing Escalations...' : 'Trigger Operations Handoff'}
           </button>
+
+          {ticket.session_id && (
+            <button
+              onClick={handleJoinChat}
+              disabled={joiningChat}
+              style={{
+                padding: '14px',
+                borderRadius: '10px',
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid var(--success)',
+                color: 'var(--success)',
+                fontSize: '13.5px',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 16px rgba(16, 185, 129, 0.1)'
+              }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.25)')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.15)')}
+            >
+              <Check size={18} />
+              {joiningChat ? 'Joining Chat...' : 'Join Live Chat Takeover'}
+            </button>
+          )}
 
           {/* Integration Status Indicators */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>

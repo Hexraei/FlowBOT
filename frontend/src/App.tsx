@@ -1,11 +1,32 @@
 import { useState, useEffect } from 'react'
 import { AdminDashboard } from './components/AdminDashboard'
-import { ChatWidget } from './components/ChatWidget'
+import { DummyWebsite } from './components/DummyWebsite'
 
 function App() {
+  const [view, setView] = useState<'dashboard' | 'website'>('dashboard')
   const [status, setStatus] = useState<'online' | 'offline' | 'loading'>('loading')
+  const [agentName, setAgentName] = useState(() => {
+    return localStorage.getItem('flowbot_agent_name') || 'Support Agent'
+  })
 
   useEffect(() => {
+    if (window.location.port === '5174') {
+      setView('website')
+    } else {
+      setView('dashboard')
+      
+      // Request browser Notification permission
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          Notification.requestPermission()
+        }
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (view === 'website') return; // no need to check status on website port
+    
     const checkStatus = async () => {
       try {
         const response = await fetch('http://localhost:8000/api/status');
@@ -24,7 +45,16 @@ function App() {
     checkStatus();
     const interval = setInterval(checkStatus, 10000); // Check every 10 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [view]);
+
+  const handleAgentNameChange = (name: string) => {
+    setAgentName(name)
+    localStorage.setItem('flowbot_agent_name', name)
+  }
+
+  if (view === 'website') {
+    return <DummyWebsite />
+  }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -40,7 +70,7 @@ function App() {
           alignItems: 'center'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
           <span 
             style={{ 
               fontSize: '20px', 
@@ -54,9 +84,52 @@ function App() {
           >
             FlowBOT
           </span>
+          
+          <a
+            href="http://localhost:5174"
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              padding: '6px 12px',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(14, 165, 233, 0.1)',
+              border: '1px solid rgba(14, 165, 233, 0.2)',
+              color: 'var(--secondary)',
+              fontSize: '12px',
+              fontWeight: '600',
+              textDecoration: 'none',
+              transition: 'background 0.2s'
+            }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(14, 165, 233, 0.2)')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(14, 165, 233, 0.1)')}
+          >
+            Open Demo Website
+          </a>
         </div>
         
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+          {/* Agent Name input */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+              Agent Name:
+            </label>
+            <input
+              type="text"
+              value={agentName}
+              onChange={e => handleAgentNameChange(e.target.value)}
+              placeholder="Your name"
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                backgroundColor: '#0c111e',
+                border: '1px solid var(--border-glass)',
+                color: 'white',
+                fontSize: '12.5px',
+                width: '140px'
+              }}
+            />
+          </div>
+
           <div 
             style={{ 
               display: 'flex', 
@@ -90,9 +163,6 @@ function App() {
       <main style={{ flex: 1, display: 'flex' }}>
         <AdminDashboard />
       </main>
-
-      {/* Visitor Chat Widget Overlay */}
-      <ChatWidget />
     </div>
   )
 }

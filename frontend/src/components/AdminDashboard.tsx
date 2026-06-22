@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Search, ShieldAlert, Layers, Smile, MessageCircle, SlidersHorizontal, CheckSquare, Eye } from 'lucide-react';
 import { TicketDetail } from './TicketDetail';
+import { TakeoverPanel } from './TakeoverPanel';
 
 interface Ticket {
   id: string;
@@ -34,6 +35,7 @@ export const AdminDashboard: React.FC = () => {
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [activeTakeoverSessionId, setActiveTakeoverSessionId] = useState<string | null>(null);
   
   // Filter and search states
   const [searchTerm, setSearchTerm] = useState('');
@@ -69,6 +71,18 @@ export const AdminDashboard: React.FC = () => {
       if (ticketsResponse.ok && clustersResponse.ok) {
         const ticketsData = await ticketsResponse.json();
         const clustersData = await clustersResponse.json();
+        
+        // Trigger browser notification for new pending_review tickets
+        if (ticketsData.length > tickets.length && statusFilter === 'pending_review' && tickets.length > 0) {
+          const newTicketsCount = ticketsData.length - tickets.length;
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification('FlowBOT Alert', {
+              body: `${newTicketsCount} new support ticket(s) pending review!`,
+              icon: '/favicon.ico'
+            });
+          }
+        }
+        
         setTickets(ticketsData);
         setClusters(clustersData);
       }
@@ -434,6 +448,18 @@ export const AdminDashboard: React.FC = () => {
           ticketId={selectedTicketId}
           onClose={() => setSelectedTicketId(null)}
           onUpdate={fetchDashboardData}
+          onJoinChat={(sessId) => {
+            setActiveTakeoverSessionId(sessId);
+            setSelectedTicketId(null);
+          }}
+        />
+      )}
+
+      {/* Live Takeover Panel on the Right */}
+      {activeTakeoverSessionId && (
+        <TakeoverPanel
+          sessionId={activeTakeoverSessionId}
+          onClose={() => setActiveTakeoverSessionId(null)}
         />
       )}
       

@@ -11,7 +11,7 @@ class TicketResponse(BaseModel):
     session_id: Optional[str] = None
     created_at: datetime
     user_message: str
-    bot_response: str
+    bot_response: Optional[str] = None
     intent: Optional[str] = None
     severity: Optional[str] = None
     sentiment: Optional[str] = None
@@ -23,6 +23,16 @@ class TicketResponse(BaseModel):
     status: str
     github_issue_url: Optional[str] = None
     discord_notified: bool
+    is_taken_over: bool
+    agent_name: Optional[str] = None
+    sender_type: str
+
+class TakeoverRequest(BaseModel):
+    agent_name: str
+
+class AgentMessageRequest(BaseModel):
+    message: str
+    agent_name: str
 
 class TicketUpdate(BaseModel):
     intent: Optional[str] = None

@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from app.config import settings
 from app.database import get_db, init_db, Ticket, Cluster
-from app.schemas import TicketRequest, TicketResponse, TicketUpdate, ClusterResponse
+from app.schemas import TicketRequest, TicketResponse, TicketUpdate, ClusterResponse, TakeoverRequest, AgentMessageRequest
 from app.llm import (
     analyze_ticket,
     generate_grounded_response,
@@ -46,6 +46,42 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Message cannot be empty")
         
     try:
+        # Check if the session is currently taken over by an agent
+        is_taken_over = False
+        agent_name = None
+        if req.session_id:
+            last_takeover_ticket = (
+                db.query(Ticket)
+                .filter(Ticket.session_id == req.session_id)
+                .filter(Ticket.is_taken_over == True)
+                .first()
+            )
+            if last_takeover_ticket:
+                is_taken_over = True
+                agent_name = last_takeover_ticket.agent_name
+
+        if is_taken_over:
+            # Bypass LLM and RAG. Simply save user message and return it.
+            ticket = Ticket(
+                session_id=req.session_id,
+                user_message=message,
+                bot_response=None,
+                intent="live_chat",
+                summary="Active human chat takeover",
+                severity="low",
+                sentiment="neutral",
+                probable_component="Live Chat",
+                urgency=1,
+                status="resolved",
+                is_taken_over=True,
+                agent_name=agent_name,
+                sender_type="user"
+            )
+            db.add(ticket)
+            db.commit()
+            db.refresh(ticket)
+            return ticket
+
         # Pre-compute message embedding to reuse for clustering and optimize performance
         from app.vector_store import embedding_fn
         import json
@@ -122,7 +158,8 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
             contact_details=analysis.get("contact_details"),
             confidence_score=analysis.get("confidence_score"),
             embedding=message_embedding_json,
-            status=status
+            status=status,
+            sender_type="user"
         )
         db.add(ticket)
         db.commit()
@@ -270,3 +307,54 @@ def get_system_status():
     except Exception as e:
         print(f"Status check failed: {e}")
         return {"status": "offline"}
+
+@app.post("/api/tickets/session/{session_id}/takeover")
+def takeover_session(session_id: str, req: TakeoverRequest, db: Session = Depends(get_db)):
+    tickets = db.query(Ticket).filter(Ticket.session_id == session_id).all()
+    for t in tickets:
+        t.is_taken_over = True
+        t.agent_name = req.agent_name
+        t.status = "resolved"
+    
+    system_ticket = Ticket(
+        session_id=session_id,
+        user_message=f"{req.agent_name} has joined the chat.",
+        bot_response=None,
+        intent="system_event",
+        summary="System takeover notification",
+        status="resolved",
+        is_taken_over=True,
+        agent_name=req.agent_name,
+        sender_type="system"
+    )
+    db.add(system_ticket)
+    db.commit()
+    return {"status": "success", "agent_name": req.agent_name}
+
+@app.post("/api/tickets/session/{session_id}/message", response_model=TicketResponse)
+def send_agent_message(session_id: str, req: AgentMessageRequest, db: Session = Depends(get_db)):
+    agent_ticket = Ticket(
+        session_id=session_id,
+        user_message=req.message,
+        bot_response=None,
+        intent="agent_message",
+        summary="Response from support agent",
+        status="resolved",
+        is_taken_over=True,
+        agent_name=req.agent_name,
+        sender_type="agent"
+    )
+    db.add(agent_ticket)
+    db.commit()
+    db.refresh(agent_ticket)
+    return agent_ticket
+
+@app.get("/api/tickets/session/{session_id}/messages", response_model=List[TicketResponse])
+def get_session_messages(session_id: str, db: Session = Depends(get_db)):
+    messages = (
+        db.query(Ticket)
+        .filter(Ticket.session_id == session_id)
+        .order_by(Ticket.created_at.asc())
+        .all()
+    )
+    return messages

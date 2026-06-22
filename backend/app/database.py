@@ -41,6 +41,10 @@ class Ticket(Base):
     embedding = Column(Text, nullable=True)  # Stores JSON string of the float embedding vector
     status = Column(String, default="pending_review") # pending_review, handoff_completed, resolved, ignored
     
+    is_taken_over = Column(Boolean, default=False)
+    agent_name = Column(String, nullable=True)
+    sender_type = Column(String, default="user") # user, bot, agent, system
+    
     # Downstream integrations
     github_issue_url = Column(String, nullable=True)
     discord_notified = Column(Boolean, default=False)
