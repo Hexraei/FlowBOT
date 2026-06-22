@@ -1,64 +1,100 @@
-# FlowZint Support BOT - Dual-Window Live Chat Takeover System
+# FlowBOT — Customer Support Chat with Live Agent Takeover
 
-Welcome to the FlowZint Support BOT project! This application provides a dual-window interface demonstrating a state-of-the-art customer service workflow, combining local RAG-based AI concierge support with a live human takeover dashboard.
+A local customer support chat system where an AI handles questions first, and a real person can take over the conversation at any point.
 
 ---
 
-## 🚀 Quick Start Instructions
+## What It Does
 
-This project includes automated setup and launcher scripts for a seamless developer experience.
+- Customers open a chat widget on a demo website and ask questions.
+- The local AI model reads the question and replies using information from a built-in knowledge base.
+- The support team watches incoming chats on a private dashboard.
+- When needed, an agent can join any conversation — from that point, the customer talks directly to a real person. The AI steps aside completely.
+- The dashboard shows all conversations, lets agents review details, and can escalate tickets to GitHub Issues or Discord.
 
-### Step 1: Install Dependencies
-Open a terminal in the project root folder and run the setup script:
+---
+
+## Requirements
+
+Before running anything, make sure you have:
+
+- **Python 3.10+**
+- **Node.js 18+** and **npm**
+- **Ollama** running locally — download from [ollama.com](https://ollama.com/)
+- *(Optional)* **Redis** — for persistent rate limiting. The app works without it but falls back to in-memory mode.
+
+---
+
+## Setup
+
+**Step 1 — Run the setup script.** It checks and installs everything automatically:
+
 ```bash
 python install_req.py
 ```
-This script will:
-* Check for and install all required **Python packages** (FastAPI, SQLAlchemy, ChromaDB, etc.).
-* Verify if **Node.js** and **npm** are installed.
-* Automatically install **npm packages** in the frontend folder.
-* Verify if **Ollama** is running locally and automatically pull the `qwen2.5:1.5b` model if it is missing.
 
-### Step 2: Start the Servers
-Once the setup is successful, launch all three servers simultaneously with a single command:
+This will install Python packages, npm packages, and pull the AI model if it's not already downloaded. It also checks if Redis is available.
+
+**Step 2 — Configure your secrets.** Copy the example env files and fill in the values:
+
+```
+backend/.env
+frontend/.env
+```
+
+At minimum, set the same value for `ADMIN_API_KEY` in both files. This key protects the admin dashboard and agent routes. The default placeholder value is for local development only — change it before sharing the app with anyone.
+
+**Step 3 — Start everything:**
+
 ```bash
 python main.py
 ```
-* **On Windows**: This opens three separate command prompt terminal windows (one for each server) so you can easily view log outputs and debug in real-time.
-* **On Mac/Linux**: This spins them up cleanly as background processes.
-* **Stopping the App**: Simply press `Enter` or `Ctrl+C` in the main launcher terminal, and it will cleanly terminate all running servers.
+
+On Windows this opens three separate terminal windows. On Mac/Linux it runs them in the background. Press `Enter` or `Ctrl+C` to stop all three servers at once.
 
 ---
 
-## 🌐 Server Port Layout
+## Where to Open
 
-The application runs on three independent local ports:
-1. **FastAPI Backend**: `http://localhost:8000` (API services, RAG query pipelines, and database logs).
-2. **Operations Dashboard**: [http://localhost:5173](http://localhost:5173) (Internal admin panel for reviewing support tickets, configuring agent profiles, and joining live chats).
-3. **Customer Website Mockup**: [http://localhost:5174](http://localhost:5174) (FlowZint dummy landing page displaying scraped service, internship, and career facts, complete with an embedded AI customer support chat widget).
-
----
-
-## 💡 How It Works
-
-1. **AI Chat Mode**: When a visitor opens the chat widget at `http://localhost:5174`, they converse with the local `qwen2.5:1.5b` model. The AI answers queries grounded on FlowZint crawled facts using a single-pass consolidated RAG pipeline.
-2. **Intent & Severity Triaging**: The backend automatically parses the messages, categorizing intents (e.g., business inquiries, careers, internships) and sentiments in real-time. If a ticket meets high-priority metrics (e.g., negative sentiment or explicit business inquiry), it is flagged for review.
-3. **Human Request Shortcut**: A quick-suggestion button **"Connect me to an agent"** is provided. Selecting it triggers a heuristic override that alerts the user: *"Please wait while we connect you to a real agent..."* and routes the ticket to the admin dashboard.
-4. **Live Human Takeover**:
-   * Open the Operations Dashboard at `http://localhost:5173` and input your **Agent Name** in the top-right navbar.
-   * Locate the pending ticket in the list (refreshes automatically every **5 seconds**).
-   * Click **Review** to open the details slide-out drawer, then click **Join Live Chat Takeover**.
-   * A popup system message is sent to the customer widget saying `"[Agent Name] has joined the chat."` and the bot is put into bypass mode.
-   * From this point on, two-way communication between you and the customer is direct, bypassing the LLM completely.
+| What | URL |
+|---|---|
+| Customer chat (demo website) | http://localhost:5174 |
+| Agent dashboard | http://localhost:5173 |
+| Backend API | http://localhost:8000 |
 
 ---
 
-## 📁 Repository Structure
+## How to Take Over a Chat
 
-* `main.py` - Single-entry launcher script to run all 3 servers.
-* `install_req.py` - Pre-requisites installation and verification script.
-* `requirements.txt` - Python backend package requirements.
-* `backend/` - FastAPI backend application code.
-* `frontend/` - React/Vite web interface containing components for the dashboard, landing page, and chat bubble widget.
-* `knowledge_base/` - Text documents of crawled FlowZint facts used for RAG grounding.
-* `docs/` - Product Requirements Documents (PRD) and evaluation reports.
+1. Open the agent dashboard at `http://localhost:5173`.
+2. Enter your name in the top-right corner.
+3. Find a pending conversation in the list and click **Review**.
+4. Click **Join Live Chat Takeover**.
+5. A message appears in the customer's chat saying you've joined. The AI stops responding.
+6. Type replies in the agent panel — the customer sees them in real time.
+
+The customer side also has a **"Connect me to an agent"** quick-reply button. Pressing it sends an immediate alert to the dashboard.
+
+---
+
+## Folder Layout
+
+```
+main.py            — starts all 3 servers with one command
+install_req.py     — installs and checks all dependencies
+requirements.txt   — Python package list
+backend/           — API server (FastAPI + SQLite + local AI model)
+frontend/          — Dashboard and demo website (React)
+knowledge_base/    — Text files the AI reads to answer questions
+docs/              — Planning and reference documents
+```
+
+---
+
+## Security Notes
+
+- The admin dashboard and all agent routes require an `X-Admin-Key` header. Set this in both `.env` files before use.
+- Neither `.env` file is committed to this repository — keep your secrets out of version control.
+- CORS is locked to `localhost:5173` and `localhost:5174` by default. Change `ALLOWED_ORIGINS` in `backend/.env` if you host this elsewhere.
+- Session IDs use the browser's built-in secure random generator.
+- Rate limiting is on by default: 20 messages/minute from the chat widget, 60 requests/minute on agent endpoints.
