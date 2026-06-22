@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, ArrowRight, MessageSquare, User, BadgeAlert } from 'lucide-react';
+import { API_BASE, adminHeaders } from '../api';
 
 interface Ticket {
   id: string;
@@ -49,12 +50,10 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, o
   const fetchTicket = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/tickets/${ticketId}`);
+      const response = await fetch(`${API_BASE}/api/tickets/${ticketId}`, { headers: adminHeaders });
       if (response.ok) {
         const data = await response.json();
         setTicket(data);
-        
-        // Initialize form fields
         setIntent(data.intent || 'other');
         setSeverity(data.severity || 'low');
         setSentiment(data.sentiment || 'neutral');
@@ -74,20 +73,11 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, o
     e.preventDefault();
     setSaving(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/tickets/${ticketId}`, {
+      const response = await fetch(`${API_BASE}/api/tickets/${ticketId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          intent,
-          severity,
-          sentiment,
-          probable_component: component,
-          urgency,
-          contact_details: contact,
-          status
-        })
+        headers: adminHeaders,
+        body: JSON.stringify({ intent, severity, sentiment, probable_component: component, urgency, contact_details: contact, status })
       });
-      
       if (response.ok) {
         alert('Ticket specifications successfully updated.');
         onUpdate();
@@ -104,11 +94,11 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, o
   const handleHandoff = async () => {
     setEscalating(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/tickets/${ticketId}/handoff`, {
-        method: 'POST'
+      const response = await fetch(`${API_BASE}/api/tickets/${ticketId}/handoff`, {
+        method: 'POST',
+        headers: adminHeaders
       });
       if (response.ok) {
-        await response.json();
         alert('Handoff integrations executed successfully!');
         onUpdate();
         fetchTicket();
@@ -128,9 +118,9 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, o
     setJoiningChat(true);
     try {
       const agentName = localStorage.getItem('flowbot_agent_name') || 'Support Agent';
-      const response = await fetch(`http://localhost:8000/api/tickets/session/${ticket.session_id}/takeover`, {
+      const response = await fetch(`${API_BASE}/api/tickets/session/${ticket.session_id}/takeover`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders,
         body: JSON.stringify({ agent_name: agentName })
       });
       if (response.ok) {

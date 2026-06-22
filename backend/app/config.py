@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # Clustering Settings
     CLUSTERING_THRESHOLD: float = 0.80  # Cosine similarity threshold for duplicate detection
     
+    # Security Settings
+    ADMIN_API_KEY: str = os.getenv("ADMIN_API_KEY", "")
+    ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174")
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+    
     # Integration Placeholders
     GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
     GITHUB_REPO: str = os.getenv("GITHUB_REPO", "flowzint/support-tickets")

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, Send, X, Bot, Sparkles, AlertCircle } from 'lucide-react';
+import { API_BASE } from '../api';
 
 interface Message {
   id: string;
@@ -70,10 +71,11 @@ const mapTicketsToMessages = (tickets: any[]) => {
 
 export const ChatWidget: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
+  // Cryptographically secure session ID using browser's built-in CSPRNG
   const [sessionId] = useState(() => {
     let id = sessionStorage.getItem('flowzint_chat_session_id');
     if (!id) {
-      id = 'sess_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now().toString(36);
+      id = 'sess_' + crypto.randomUUID().replace(/-/g, '');
       sessionStorage.setItem('flowzint_chat_session_id', id);
     }
     return id;
@@ -97,32 +99,62 @@ export const ChatWidget: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Polling loop to fetch messages from DB and detect human takeover
-  useEffect(() => {
-    if (!isOpen) return;
+  const sseRef = useRef<EventSource | null>(null);
 
-    const pollMessages = async () => {
-      try {
-        const response = await fetch(`http://localhost:8000/api/tickets/session/${sessionId}/messages`);
-        if (response.ok) {
-          const tickets = await response.json();
-          if (tickets.length > 0) {
-            const { list, takeoverFound, currentAgent } = mapTicketsToMessages(tickets);
-            setMessages(list);
-            setIsTakenOver(takeoverFound);
-            if (takeoverFound) {
-              setAgentName(currentAgent);
+  // SSE stream to receive messages and detect human takeover in real time
+  useEffect(() => {
+    if (!isOpen) {
+      sseRef.current?.close();
+      return;
+    }
+
+    const connectSSE = () => {
+      if (sseRef.current) sseRef.current.close();
+      const es = new EventSource(`${API_BASE}/api/stream/session/${sessionId}`);
+
+      es.onmessage = (event) => {
+        try {
+          const ticket = JSON.parse(event.data);
+          setMessages(prev => {
+            const existing = prev.find(m => m.id === ticket.id + '-user' || m.id === ticket.id + '-bot' || m.id === ticket.id);
+            if (existing) return prev;
+
+            const newMsgs: Message[] = [];
+
+            if (ticket.sender_type === 'system') {
+              newMsgs.push({ id: ticket.id, text: ticket.user_message, sender: 'system', timestamp: new Date(ticket.created_at) });
+            } else if (ticket.sender_type === 'agent') {
+              newMsgs.push({ id: ticket.id, text: ticket.user_message, sender: 'agent', agentName: ticket.agent_name, timestamp: new Date(ticket.created_at) });
+            } else {
+              newMsgs.push({ id: ticket.id + '-user', text: ticket.user_message, sender: 'user', timestamp: new Date(ticket.created_at) });
+              if (ticket.bot_response) {
+                newMsgs.push({ id: ticket.id + '-bot', text: ticket.bot_response, sender: 'bot', timestamp: new Date(ticket.created_at) });
+              }
             }
-          }
+
+            if (ticket.is_taken_over) {
+              setIsTakenOver(true);
+              if (ticket.agent_name) setAgentName(ticket.agent_name);
+            }
+
+            return [...prev, ...newMsgs];
+          });
+        } catch (e) {
+          console.error('SSE parse error:', e);
         }
-      } catch (err) {
-        console.error('Error polling customer messages:', err);
-      }
+      };
+
+      es.onerror = () => {
+        console.warn('ChatWidget SSE disconnected. Retrying in 3s...');
+        es.close();
+        setTimeout(connectSSE, 3000);
+      };
+
+      sseRef.current = es;
     };
 
-    pollMessages();
-    const interval = setInterval(pollMessages, 2000);
-    return () => clearInterval(interval);
+    connectSSE();
+    return () => sseRef.current?.close();
   }, [isOpen, sessionId]);
 
   const handleSend = async (textToSend: string) => {
@@ -144,7 +176,7 @@ export const ChatWidget: React.FC = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, session_id: sessionId })

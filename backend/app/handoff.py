@@ -1,7 +1,10 @@
+import logging
 import requests
 from sqlalchemy.orm import Session
 from app.database import Ticket
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 def trigger_github_handoff(ticket_id: str, db: Session) -> str:
     """
@@ -30,7 +33,7 @@ def trigger_github_handoff(ticket_id: str, db: Session) -> str:
     
     # Check if we have credentials
     if settings.GITHUB_TOKEN:
-        print(f"Handoff: Creating real GitHub issue for ticket {ticket.id}...")
+        logger.info(f"Handoff: Creating GitHub issue for ticket {ticket.id}...")
         url = f"https://api.github.com/repos/{settings.GITHUB_REPO}/issues"
         headers = {
             "Authorization": f"token {settings.GITHUB_TOKEN}",
@@ -49,21 +52,15 @@ def trigger_github_handoff(ticket_id: str, db: Session) -> str:
                 ticket.github_issue_url = issue_url
                 ticket.status = "handoff_completed"
                 db.commit()
-                print(f"Handoff: Real GitHub issue created: {issue_url}")
+                logger.info(f"Handoff: GitHub issue created: {issue_url}")
                 return issue_url
             else:
                 raise Exception(f"GitHub API returned status {response.status_code}: {response.text}")
         except Exception as e:
-            print(f"Handoff Error: Failed to call GitHub API: {e}")
+            logger.exception(f"Handoff: GitHub API call failed: {e}")
             raise e
     else:
-        # Placeholder Mode Fallback
-        print(f"\n[PLACEHOLDER HANDOFF - GITHUB ISSUE]")
-        print(f"Target Repository : {settings.GITHUB_REPO}")
-        print(f"Issue Title       : {title}")
-        print(f"Issue Body        :\n{body}")
-        print(f"[END GITHUB PLACEHOLDER]\n")
-        
+        logger.info(f"[PLACEHOLDER HANDOFF - GITHUB ISSUE] Target: {settings.GITHUB_REPO} | Title: {title}")
         mock_url = f"https://github.com/{settings.GITHUB_REPO}/issues/mock-{ticket.id[:8]}"
         ticket.github_issue_url = mock_url
         ticket.status = "handoff_completed"
@@ -80,44 +77,40 @@ def trigger_discord_handoff(ticket_id: str, db: Session) -> bool:
         print(f"Handoff Error: Ticket {ticket_id} not found in DB.")
         return False
         
+    # Strip PII: contact_details is excluded from the public-facing Discord notification.
+    # The full ticket (including contact) is only accessible through the authenticated admin dashboard.
     payload = {
         "embeds": [
             {
                 "title": f"[ALERT] Support Escalation: {ticket.summary or 'New Ticket'}",
                 "description": f"**Message:** {ticket.user_message}",
-                "color": 15158332 if ticket.severity == "high" else 3066993, # Red for High, Green otherwise
+                "color": 15158332 if ticket.severity == "high" else 3066993,
                 "fields": [
                     {"name": "Intent", "value": ticket.intent or "N/A", "inline": True},
                     {"name": "Urgency", "value": f"{ticket.urgency}/5" if ticket.urgency else "N/A", "inline": True},
                     {"name": "Component", "value": ticket.probable_component or "N/A", "inline": True},
-                    {"name": "Contact", "value": ticket.contact_details or "None shared", "inline": False}
+                    {"name": "Contact Provided", "value": "Yes — see admin dashboard" if ticket.contact_details else "No", "inline": False}
                 ]
             }
         ]
     }
     
-    # Check if webhook URL is set
     if settings.DISCORD_WEBHOOK_URL:
-        print(f"Handoff: Sending Discord webhook for ticket {ticket.id}...")
+        logger.info(f"Handoff: Sending Discord alert for ticket {ticket.id}...")
         try:
             response = requests.post(settings.DISCORD_WEBHOOK_URL, json=payload, timeout=10)
             if response.status_code in [200, 204]:
                 ticket.discord_notified = True
                 db.commit()
-                print("Handoff: Discord notification sent successfully.")
+                logger.info("Handoff: Discord notification sent successfully.")
                 return True
             else:
                 raise Exception(f"Discord API returned status {response.status_code}: {response.text}")
         except Exception as e:
-            print(f"Handoff Error: Failed to post to Discord webhook: {e}")
+            logger.exception(f"Handoff: Discord webhook failed: {e}")
             raise e
     else:
-        # Placeholder Mode Fallback
-        print(f"\n[PLACEHOLDER HANDOFF - DISCORD ALERT]")
-        print(f"Webhook URL       : (Empty / Placeholder)")
-        print(f"Discord Payload   : {payload}")
-        print(f"[END DISCORD PLACEHOLDER]\n")
-        
+        logger.info(f"[PLACEHOLDER HANDOFF - DISCORD ALERT] Payload: {payload}")
         ticket.discord_notified = True
         db.commit()
         return True

@@ -52,22 +52,22 @@ def main():
         
         # B. Start Dashboard Frontend
         print("Launching Dashboard Frontend (Port 5173)...")
-        dashboard_cmd = "npm run dev -- --port 5173 --strictPort"
+        # Use explicit arg list instead of shell=True to avoid shell injection risk
+        npm_bin = "npm.cmd" if sys.platform == "win32" else "npm"
+        dashboard_cmd = [npm_bin, "run", "dev", "--", "--port", "5173", "--strictPort"]
         p_dashboard = subprocess.Popen(
             dashboard_cmd,
             cwd=frontend_dir,
-            shell=True,
             creationflags=creation_flag
         )
         processes.append(("Dashboard", p_dashboard))
         
         # C. Start Customer Website Frontend
         print("Launching Customer Website Frontend (Port 5174)...")
-        website_cmd = "npm run dev -- --port 5174 --strictPort"
+        website_cmd = [npm_bin, "run", "dev", "--", "--port", "5174", "--strictPort"]
         p_website = subprocess.Popen(
             website_cmd,
             cwd=frontend_dir,
-            shell=True,
             creationflags=creation_flag
         )
         processes.append(("Website", p_website))

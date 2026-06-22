@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Search, ShieldAlert, Layers, Smile, MessageCircle, SlidersHorizontal, CheckSquare, Eye } from 'lucide-react';
 import { TicketDetail } from './TicketDetail';
 import { TakeoverPanel } from './TakeoverPanel';
+import { API_BASE, adminHeaders } from '../api';
 
 interface Ticket {
   id: string;
@@ -43,55 +44,66 @@ export const AdminDashboard: React.FC = () => {
   const [severityFilter, setSeverityFilter] = useState('');
   const [intentFilter, setIntentFilter] = useState('');
 
-  useEffect(() => {
-    fetchDashboardData();
-    
-    // Automatically refresh dashboard statistics every 5 seconds
-    const interval = setInterval(() => {
-      fetchDashboardData();
-    }, 5000);
-    
-    return () => clearInterval(interval);
-  }, [statusFilter, severityFilter, intentFilter]);
+  const sseRef = useRef<EventSource | null>(null);
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
+  // Fetch clusters separately (these don't need real-time updates)
+  const fetchClusters = async () => {
     try {
-      // Build query string
-      const params = new URLSearchParams();
-      if (statusFilter) params.append('status', statusFilter);
-      if (severityFilter) params.append('severity', severityFilter);
-      if (intentFilter) params.append('intent', intentFilter);
-
-      const [ticketsResponse, clustersResponse] = await Promise.all([
-        fetch(`http://localhost:8000/api/tickets?${params.toString()}`),
-        fetch('http://localhost:8000/api/clusters')
-      ]);
-
-      if (ticketsResponse.ok && clustersResponse.ok) {
-        const ticketsData = await ticketsResponse.json();
-        const clustersData = await clustersResponse.json();
-        
-        // Trigger browser notification for new pending_review tickets
-        if (ticketsData.length > tickets.length && statusFilter === 'pending_review' && tickets.length > 0) {
-          const newTicketsCount = ticketsData.length - tickets.length;
-          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification('FlowBOT Alert', {
-              body: `${newTicketsCount} new support ticket(s) pending review!`,
-              icon: '/favicon.ico'
-            });
-          }
-        }
-        
-        setTickets(ticketsData);
-        setClusters(clustersData);
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setLoading(false);
+      const res = await fetch(`${API_BASE}/api/clusters`, { headers: adminHeaders });
+      if (res.ok) setClusters(await res.json());
+    } catch (e) {
+      console.error('Failed to fetch clusters:', e);
     }
   };
+
+  useEffect(() => {
+    fetchClusters();
+
+    // Connect to SSE stream for real-time ticket updates
+    const connectSSE = () => {
+      if (sseRef.current) sseRef.current.close();
+
+      const params = new URLSearchParams();
+      if (statusFilter) params.append('status', statusFilter);
+
+      const url = `${API_BASE}/api/stream/tickets?${params.toString()}`;
+      const es = new EventSource(url);
+
+      es.onmessage = (event) => {
+        try {
+          const ticketsData: Ticket[] = JSON.parse(event.data);
+
+          // Browser notification for new pending_review tickets
+          setTickets(prev => {
+            if (ticketsData.length > prev.length && statusFilter === 'pending_review' && prev.length > 0) {
+              const newCount = ticketsData.length - prev.length;
+              if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('FlowBOT Alert', {
+                  body: `${newCount} new support ticket(s) pending review!`,
+                  icon: '/favicon.ico'
+                });
+              }
+            }
+            return ticketsData;
+          });
+          setLoading(false);
+        } catch (e) {
+          console.error('SSE parse error:', e);
+        }
+      };
+
+      es.onerror = () => {
+        console.warn('Admin SSE disconnected. Retrying in 5s...');
+        es.close();
+        setTimeout(connectSSE, 5000);
+      };
+
+      sseRef.current = es;
+    };
+
+    connectSSE();
+    return () => sseRef.current?.close();
+  }, [statusFilter]);
 
   const getFilteredTickets = () => {
     return tickets.filter(t => 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, X, Shield, User, Bot, AlertCircle } from 'lucide-react';
+import { API_BASE, adminHeaders } from '../api';
 
 interface Message {
   id: string;
@@ -21,30 +22,43 @@ export const TakeoverPanel: React.FC<TakeoverPanelProps> = ({ sessionId, onClose
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // Initial fetch
-    fetchMessages();
-
-    // Setup polling every 2 seconds
-    const interval = setInterval(fetchMessages, 2000);
-    return () => clearInterval(interval);
-  }, [sessionId]);
+  const sseRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const fetchMessages = async () => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/tickets/session/${sessionId}/messages`);
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(data);
-      }
-    } catch (err) {
-      console.error('Error fetching takeover messages:', err);
-    }
-  };
+  // Replace polling with SSE stream
+  useEffect(() => {
+    const connectSSE = () => {
+      if (sseRef.current) sseRef.current.close();
+      const es = new EventSource(`${API_BASE}/api/stream/session/${sessionId}`);
+
+      es.onmessage = (event) => {
+        try {
+          const ticket = JSON.parse(event.data);
+          setMessages(prev => {
+            const exists = prev.find(m => m.id === ticket.id);
+            if (exists) return prev;
+            return [...prev, ticket];
+          });
+        } catch (e) {
+          console.error('SSE parse error:', e);
+        }
+      };
+
+      es.onerror = () => {
+        console.warn('TakeoverPanel SSE disconnected. Retrying in 3s...');
+        es.close();
+        setTimeout(connectSSE, 3000);
+      };
+
+      sseRef.current = es;
+    };
+
+    connectSSE();
+    return () => sseRef.current?.close();
+  }, [sessionId]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,21 +70,15 @@ export const TakeoverPanel: React.FC<TakeoverPanelProps> = ({ sessionId, onClose
 
     try {
       const agentName = localStorage.getItem('flowbot_agent_name') || 'Support Agent';
-      const response = await fetch(`http://localhost:8000/api/tickets/session/${sessionId}/message`, {
+      const response = await fetch(`${API_BASE}/api/tickets/session/${sessionId}/message`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          agent_name: agentName
-        })
+        headers: adminHeaders,
+        body: JSON.stringify({ message: text, agent_name: agentName })
       });
 
-      if (response.ok) {
-        // Fetch immediately to update view
-        fetchMessages();
-      } else {
+      if (!response.ok) {
         alert('Failed to send message.');
-        setInput(text); // Restore input on error
+        setInput(text);
       }
     } catch (err) {
       console.error(err);

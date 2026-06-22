@@ -24,7 +24,10 @@ def check_python_packages():
         "python-dotenv": "dotenv",
         "pydantic": "pydantic",
         "pydantic-settings": "pydantic_settings",
-        "httpx": "httpx"
+        "httpx": "httpx",
+        "slowapi": "slowapi",
+        "redis": "redis",
+        "sse-starlette": "sse_starlette"
     }
     
     missing_packages = []
@@ -69,22 +72,26 @@ def check_node_and_npm():
     print_section("Checking Node.js & npm")
     node_installed = False
     npm_installed = False
-    
+
+    # Use platform-specific binary names; avoid shell=True for security
+    node_bin = "node.exe" if sys.platform == "win32" else "node"
+    npm_bin = "npm.cmd" if sys.platform == "win32" else "npm"
+
     try:
-        node_ver = subprocess.run(["node", "--version"], shell=True, capture_output=True, text=True, check=True)
+        node_ver = subprocess.run([node_bin, "--version"], capture_output=True, text=True, check=True)
         print(f"[OK] Node.js is installed. Version: {node_ver.stdout.strip()}")
         node_installed = True
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("[MISSING] Node.js is not installed or not in system PATH.")
         print("Please download and install Node.js from https://nodejs.org/")
-        
+
     try:
-        npm_ver = subprocess.run(["npm", "--version"], shell=True, capture_output=True, text=True, check=True)
+        npm_ver = subprocess.run([npm_bin, "--version"], capture_output=True, text=True, check=True)
         print(f"[OK] npm is installed. Version: {npm_ver.stdout.strip()}")
         npm_installed = True
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("[MISSING] npm is not installed or not in system PATH.")
-        
+
     return node_installed and npm_installed
 
 def check_frontend_deps():
@@ -101,8 +108,8 @@ def check_frontend_deps():
         
     print("[MISSING] frontend/node_modules not found. Running npm install...")
     try:
-        # On Windows, npm can be npm.cmd or npm.bat, so shell=True is recommended or using shell executable
-        subprocess.run("npm install", cwd=frontend_dir, shell=True, check=True)
+        npm_bin = "npm.cmd" if sys.platform == "win32" else "npm"
+        subprocess.run([npm_bin, "install"], cwd=frontend_dir, check=True)
         print("[Success] Frontend dependencies successfully installed.")
         return True
     except subprocess.CalledProcessError as e:
@@ -163,32 +170,54 @@ def check_ollama_and_qwen():
         print(f"Please pull it manually by running: ollama pull {model_name}")
         return False
 
+
+def check_redis():
+    print_section("Checking Redis Server")
+    try:
+        import redis
+        r = redis.Redis(host="localhost", port=6379, socket_connect_timeout=2)
+        r.ping()
+        print("[OK] Redis is running on localhost:6379.")
+        return True
+    except Exception:
+        print("[WARN] Redis is not running or not installed.")
+        print("Rate limiting will fall back to in-memory mode (resets on server restart).")
+        print("To install Redis on Windows: https://redis.io/docs/getting-started/installation/install-redis-on-windows/")
+        print("To install Redis on macOS:   brew install redis && brew services start redis")
+        print("To install Redis on Linux:   sudo apt install redis-server && sudo systemctl start redis")
+        return False  # Non-fatal: app still works, just with degraded rate limit persistence
+
 def main():
     print("=" * 60)
     print(" FlowZint Support BOT - Installation & Pre-requisites Check")
     print("=" * 60)
-    
+
     python_ok = check_python_packages()
     node_ok = check_node_and_npm()
-    
+
     if node_ok:
         frontend_ok = check_frontend_deps()
     else:
         frontend_ok = False
         print("[WARN] Skipping npm package installations until Node.js is installed.")
-        
+
     ollama_ok = check_ollama_and_qwen()
-    
+    redis_ok = check_redis()
+
     print_section("Setup Summary")
     print(f"Python Dependencies : {'[OK]' if python_ok else '[FAILED]'}")
     print(f"Node.js & npm       : {'[OK]' if node_ok else '[FAILED]'}")
     print(f"Frontend packages   : {'[OK]' if frontend_ok else '[FAILED]'}")
     print(f"Ollama & Qwen Model : {'[OK]' if ollama_ok else '[FAILED]'}")
-    
+    print(f"Redis Server        : {'[OK]' if redis_ok else '[WARN - rate limiting will use in-memory fallback]'}")
+
     if python_ok and node_ok and frontend_ok and ollama_ok:
-        print("\n[SUCCESS] Setup complete! All prerequisites are met. Run 'python main.py' to start the servers.")
+        print("\n[SUCCESS] Core setup complete! Run 'python main.py' to start the servers.")
+        if not redis_ok:
+            print("[NOTE] Redis is optional but recommended for persistent rate limiting.")
     else:
         print("\n[WARNING] Some installation checks failed or require manual action. Please address them before running the app.")
+
 
 if __name__ == "__main__":
     main()

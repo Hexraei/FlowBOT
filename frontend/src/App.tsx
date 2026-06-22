@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { AdminDashboard } from './components/AdminDashboard'
 import { DummyWebsite } from './components/DummyWebsite'
+import { API_BASE } from './api'
 
 function App() {
   const [view, setView] = useState<'dashboard' | 'website'>('dashboard')
@@ -29,7 +30,7 @@ function App() {
     
     const checkStatus = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/status');
+        const response = await fetch(`${API_BASE}/api/status`);
         if (response.ok) {
           const data = await response.json();
           setStatus(data.status);
