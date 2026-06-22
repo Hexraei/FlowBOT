@@ -182,10 +182,10 @@ export const ChatWidget: React.FC = () => {
   };
 
   const suggestions = [
+    "Connect me to an agent",
     "Tell me about your AI & Automation services",
     "How can I apply for internship programs?",
-    "Do you have open opportunities for React developers?",
-    "We need custom enterprise digital infrastructure"
+    "Do you have open opportunities for React developers?"
   ];
 
   return (

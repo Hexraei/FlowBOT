@@ -82,6 +82,28 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
             db.refresh(ticket)
             return ticket
 
+        # Direct heuristic takeover trigger for the exact suggestion text
+        if message.lower() == "connect me to an agent":
+            ticket = Ticket(
+                session_id=req.session_id,
+                user_message=message,
+                bot_response="Please wait while we connect you to a real agent. Our support team has been notified and will join this chat shortly.",
+                intent="human_takeover",
+                summary="Customer clicked Connect me to an Agent",
+                severity="medium",
+                sentiment="neutral",
+                probable_component="Live Chat",
+                urgency=4,
+                status="pending_review",
+                is_taken_over=False,
+                agent_name=None,
+                sender_type="user"
+            )
+            db.add(ticket)
+            db.commit()
+            db.refresh(ticket)
+            return ticket
+
         # Pre-compute message embedding to reuse for clustering and optimize performance
         from app.vector_store import embedding_fn
         import json
@@ -132,8 +154,11 @@ def handle_customer_message(req: TicketRequest, db: Session = Depends(get_db)):
             "operations lead will reach out" in bot_response
         )
         
-        if is_high_priority or has_contact_info or is_fallback_triggered:
+        if is_high_priority or has_contact_info or is_fallback_triggered or analysis.get("intent") == "human_takeover":
             status = "pending_review"
+            
+        if analysis.get("intent") == "human_takeover":
+            bot_response = "Please wait while we connect you to a real agent. Our support team has been notified and will join this chat shortly."
             
         # If user explicitly states the issue is resolved, auto-resolve all pending tickets in this session
         if analysis.get("intent") == "resolved" and req.session_id:

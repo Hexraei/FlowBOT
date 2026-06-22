@@ -46,10 +46,10 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     fetchDashboardData();
     
-    // Automatically refresh dashboard statistics every 30 seconds
+    // Automatically refresh dashboard statistics every 5 seconds
     const interval = setInterval(() => {
       fetchDashboardData();
-    }, 30000);
+    }, 5000);
     
     return () => clearInterval(interval);
   }, [statusFilter, severityFilter, intentFilter]);

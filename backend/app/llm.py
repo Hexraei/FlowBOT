@@ -134,6 +134,11 @@ def rule_based_fallback_analysis(message: str) -> dict:
         "no problem", "never mind", "already working"
     ])
     
+    # Takeover request detection keywords
+    is_takeover = any(kw in msg_lower for kw in [
+        "human", "agent", "representative", "person", "someone", "support team", "support staff", "real agent", "live agent", "takeover"
+    ]) or "talk to" in msg_lower or "connect me" in msg_lower
+    
     # Bug / technical issue detection keywords
     has_error_kw = any(kw in msg_lower for kw in [
         "error", "fail", "broken", "500", "bug", "crash", "issue", "problem", 
@@ -146,7 +151,13 @@ def rule_based_fallback_analysis(message: str) -> dict:
         "portal", "screen", "click", "form", "input", "load"
     ])
     
-    if is_resolution:
+    if is_takeover:
+        intent = "human_takeover"
+        component = "Live Chat"
+        severity = "medium"
+        urgency = 4
+        sentiment = "neutral"
+    elif is_resolution:
         intent = "resolved"
         component = "General"
         severity = "low"
@@ -211,6 +222,11 @@ def generate_heuristic_response(message: str, analysis: dict) -> str:
     sentiment = analysis.get("sentiment", "neutral")
     severity = analysis.get("severity", "low")
     
+    if intent == "human_takeover":
+        return (
+            "Please wait while we connect you to a real agent. Our support team has been notified and will join this chat shortly."
+        )
+        
     if intent == "resolved":
         return (
             "Glad to hear everything is working now! Let me know if you have any other questions or need further assistance."
@@ -456,6 +472,7 @@ Analyze the customer message, query facts, and return a JSON object with these E
   * "open_opportunities" (available jobs)
   * "hiring_process" (stages of hiring)
   * "service_inquiry" (general tech services, AI/web/app capabilities)
+  * "human_takeover" (user explicitly asks to speak to a human, agent, person, support representative, or exit the AI chatbot)
   * "resolved" (user explicitly confirms their problem is resolved/working now, e.g. "it's working now", "nevermind")
   * "other" (general conversation or other queries)
 
@@ -463,6 +480,7 @@ Classification Rules:
 1. If the message is about student/fresher corporate internships, training tracks, registration fees, or learning curricula, the intent MUST be classified as "internship_programs" (do not use "service_inquiry" or "careers").
 2. If the message is about general hiring, recruiting documents, job postings, or employment, the intent is "careers".
 3. If the message is about custom software development, custom SaaS platforms, or commercial pricing requests, the intent is "business_enquiry".
+4. If the message indicates a desire to speak to a human, live support, a real person, or an agent, the intent MUST be classified as "human_takeover".
 
 - "summary": A concise, one-sentence summary of what the customer wants.
 - "severity": Must be "high", "medium", or "low". Use "low" for general questions, info requests, or resolved queries. Use "medium" for minor bugs/complaints. Use "high" only for critical errors, outage issues, or severe blockers.
