@@ -43,6 +43,13 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    
+    // Automatically refresh dashboard statistics every 30 seconds
+    const interval = setInterval(() => {
+      fetchDashboardData();
+    }, 30000);
+    
+    return () => clearInterval(interval);
   }, [statusFilter, severityFilter, intentFilter]);
 
   const fetchDashboardData = async () => {
@@ -187,7 +194,7 @@ export const AdminDashboard: React.FC = () => {
           }}
         >
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          Refresh Core data
+          Refresh Data
         </button>
       </div>
 

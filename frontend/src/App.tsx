@@ -1,7 +1,31 @@
+import { useState, useEffect } from 'react'
 import { AdminDashboard } from './components/AdminDashboard'
 import { ChatWidget } from './components/ChatWidget'
 
 function App() {
+  const [status, setStatus] = useState<'online' | 'offline' | 'loading'>('loading')
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/status');
+        if (response.ok) {
+          const data = await response.json();
+          setStatus(data.status);
+        } else {
+          setStatus('offline');
+        }
+      } catch (error) {
+        console.error('Failed to check system status:', error);
+        setStatus('offline');
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 10000); // Check every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Admin Panel Header / Top bar */}
@@ -17,25 +41,47 @@ function App() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              padding: '6px 12px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)',
-              fontWeight: '800',
-              fontSize: '14px',
-              color: 'white',
-              letterSpacing: '0.05em'
+          <span 
+            style={{ 
+              fontSize: '20px', 
+              fontWeight: '800', 
+              fontFamily: "'Outfit', sans-serif",
+              letterSpacing: '-0.025em',
+              background: 'linear-gradient(135deg, #f8fafc 0%, #94a3b8 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
             }}
           >
-            FLOWZINT
-          </div>
-          <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>| Operations Console</span>
+            FlowBOT
+          </span>
         </div>
         
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-            System Integrity: <span style={{ color: 'var(--success)', fontWeight: '700' }}>Stable</span>
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              fontSize: '12.5px', 
+              fontWeight: '600',
+              color: status === 'online' ? 'var(--success)' : status === 'offline' ? 'var(--danger)' : 'var(--text-muted)'
+            }}
+          >
+            <span 
+              style={{ 
+                width: '8px', 
+                height: '8px', 
+                borderRadius: '50%', 
+                backgroundColor: status === 'online' ? 'var(--success)' : status === 'offline' ? 'var(--danger)' : 'var(--text-muted)',
+                boxShadow: status === 'online' 
+                  ? '0 0 8px rgba(16, 185, 129, 0.6)' 
+                  : status === 'offline' 
+                    ? '0 0 8px rgba(239, 68, 68, 0.6)' 
+                    : 'none',
+                transition: 'all 0.3s ease'
+              }}
+            ></span>
+            {status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Checking...'}
           </div>
         </div>
       </header>

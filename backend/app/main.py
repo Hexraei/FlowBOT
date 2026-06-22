@@ -242,3 +242,31 @@ def get_all_clusters(db: Session = Depends(get_db)):
         )
     # Order by ticket count desc
     return sorted(results, key=lambda x: x.ticket_count, reverse=True)
+
+@app.get("/api/status")
+def get_system_status():
+    """Checks if the local Ollama instance is online and has the configured model available."""
+    import requests
+    from app.config import settings
+    try:
+        url = f"{settings.OLLAMA_HOST}/api/tags"
+        response = requests.get(url, timeout=3)
+        if response.status_code == 200:
+            models = response.json().get("models", [])
+            model_names = [m.get("name") for m in models]
+            configured_model = settings.OLLAMA_MODEL
+            
+            # Match configured model name (e.g. gemma or gemma:latest)
+            model_installed = any(
+                configured_model in name or name in configured_model
+                for name in model_names
+            )
+            if model_installed:
+                return {"status": "online"}
+            else:
+                print(f"Ollama is running, but configured model '{configured_model}' was not found in: {model_names}")
+                return {"status": "offline"}
+        return {"status": "offline"}
+    except Exception as e:
+        print(f"Status check failed: {e}")
+        return {"status": "offline"}
