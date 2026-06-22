@@ -375,12 +375,10 @@ export const AdminDashboard: React.FC = () => {
                       style={{
                         borderBottom: '1px solid rgba(255,255,255,0.03)',
                         fontSize: '13px',
-                        transition: 'background 0.2s',
-                        cursor: 'pointer'
+                        transition: 'background 0.2s'
                       }}
                       onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.01)')}
                       onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-                      onClick={() => setSelectedTicketId(t.id)}
                     >
                       <td style={{ padding: '14px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {new Date(t.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}

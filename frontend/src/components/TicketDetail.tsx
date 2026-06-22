@@ -137,22 +137,40 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, o
 
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        right: 0,
-        width: '560px',
-        height: '100vh',
-        backgroundColor: '#0c111e',
-        borderLeft: '1px solid var(--border-glass)',
-        boxShadow: '-8px 0 32px rgba(0,0,0,0.5)',
-        zIndex: 1000,
-        display: 'flex',
-        flexDirection: 'column',
-        animation: 'slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards'
-      }}
-    >
+    <>
+      {/* Backdrop overlay */}
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(5, 8, 16, 0.6)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+          zIndex: 999,
+          animation: 'fadeInSimple 0.25s ease-out forwards'
+        }}
+      />
+
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '560px',
+          height: '100vh',
+          backgroundColor: '#0c111e',
+          borderRight: '1px solid var(--border-glass)',
+          boxShadow: '8px 0 32px rgba(0,0,0,0.5)',
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          animation: 'slideInLeft 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards'
+        }}
+      >
       {/* Drawer Header */}
       <div
         style={{
@@ -425,5 +443,6 @@ export const TicketDetail: React.FC<TicketDetailProps> = ({ ticketId, onClose, o
 
       </div>
     </div>
+    </>
   );
 };
