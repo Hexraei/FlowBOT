@@ -29,7 +29,7 @@ The application is engineered as a decoupled monorepo structure designed for zer
 - **Relational Storage**: SQLite (via SQLAlchemy) for ticket state tracking, metadata, and cluster management.
 - **Vector Database**: Chroma DB persistence for local semantic search indexing.
 - **Embeddings**: Sentence-Transformers (`all-MiniLM-L6-v2`) for local chunk embedding and cosine similarity queries.
-- **LLM Selection**: Local Ollama execution running the `gemma` model.
+- **LLM Selection**: Local Ollama execution running the `qwen2.5:1.5b` model.
 
 ### Database Schema
 
@@ -98,7 +98,7 @@ The application is engineered as a decoupled monorepo structure designed for zer
 - **Recommended Next Actions**: Train a classifier or rule-engine to suggest actions (e.g. "Recommend scheduling a meeting on Google Calendar" or "Send standard partnership NDA").
 
 ### Phase 4: Autonomous Operations (Stretch Goals)
-- **Automatic Email Drafts**: Use Gemma to generate draft email replies for the support team based on RAG context.
+- **Automatic Email Drafts**: Use Qwen to generate draft email replies for the support team based on RAG context.
 - **Lead Scoring Engine**: Score business inquiries based on contact detail authenticity, urgency, and project descriptions to prioritize high-value client acquisitions.
 
 ---
@@ -109,7 +109,7 @@ The application is engineered as a decoupled monorepo structure designed for zer
 Create a `.env` file in the root backend directory to configure real external endpoints:
 ```ini
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=gemma
+OLLAMA_MODEL=qwen2.5:1.5b
 DATABASE_URL=sqlite:///instance/database.db
 CHROMA_PERSIST_DIR=instance/chroma_db
 KNOWLEDGE_BASE_DIR=../knowledge_base
@@ -122,7 +122,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_webhook_url
 To test and debug independent subsystems, execute the following CLI tools from the repository root:
 - Initialize DB: `python backend/init_app.py`
 - Populate and Test Chroma: `python backend/index_kb.py`
-- Test Fallback & Gemma Analysis: `python backend/test_llm.py`
+- Test Fallback & Qwen Analysis: `python backend/test_llm.py`
 - Test Grounded QA Responses: `python backend/test_rag.py`
 - Test Cosine Clustering: `python backend/test_clustering.py`
 - Test API client: `python backend/test_api.py`

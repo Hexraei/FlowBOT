@@ -293,7 +293,7 @@ def get_system_status():
             model_names = [m.get("name") for m in models]
             configured_model = settings.OLLAMA_MODEL
             
-            # Match configured model name (e.g. gemma or gemma:latest)
+            # Match configured model name (e.g. qwen or qwen:latest)
             model_installed = any(
                 configured_model in name or name in configured_model
                 for name in model_names

@@ -34,7 +34,7 @@ def fuzzy_correct_token(token: str, threshold: float = 0.7) -> str:
     return token
 
 def call_ollama(prompt: str, system_prompt: str = None, format_json: bool = True) -> str:
-    """Helper to query the local Ollama instance running Gemma."""
+    """Helper to query the local Ollama instance running Qwen."""
     url = f"{settings.OLLAMA_HOST}/api/generate"
     payload = {
         "model": settings.OLLAMA_MODEL,
@@ -53,13 +53,13 @@ def call_ollama(prompt: str, system_prompt: str = None, format_json: bool = True
         result = response.json()
         return result.get("response", "").strip()
     except Exception as e:
-        print(f"Ollama/Gemma request failed: {e}")
+        print(f"Ollama/Qwen request failed: {e}")
         raise e
 
 def analyze_ticket(message: str) -> dict:
     """
     Classifies intent, estimates severity, sentiment, urgency, component,
-    and extracts contact details into a structured JSON dict using Gemma.
+    and extracts contact details into a structured JSON dict using Qwen.
     """
     system_prompt = (
         "You are an expert AI support triaging agent. Your job is to read customer "
@@ -101,7 +101,7 @@ JSON Response:
             "confidence_score": float(data.get("confidence_score", 0.5))
         }
     except Exception as e:
-        print(f"Failed to process Gemma structured output: {e}")
+        print(f"Failed to process Qwen structured output: {e}")
         # Rule-based fallback if JSON parsing fails or Ollama is offline
         return rule_based_fallback_analysis(message)
 
@@ -292,7 +292,7 @@ def generate_grounded_response(message: str, analysis: dict, history: list[dict]
         print(f"RAG: Best similarity score too low. Triggering fallback.")
         return generate_heuristic_response(message, analysis)
         
-    # 3. Construct prompt for Gemma
+    # 3. Construct prompt for Qwen
     context_str = "\n\n".join(
         f"Source: {d['title']} ({d['url']})\nContent: {d['content']}" 
         for d in docs

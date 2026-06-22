@@ -5,7 +5,7 @@ The FlowZint Support Workflow Assistant is an artificial intelligence support in
 ## System Architecture
 
 The application is structured as a monorepo consisting of:
-- **Backend**: Python FastAPI application exposing REST endpoints, storing tickets in SQLite, utilizing a Chroma vector database for retrieval-augmented generation (RAG), and calling local Ollama (Gemma) instances.
+- **Backend**: Python FastAPI application exposing REST endpoints, storing tickets in SQLite, utilizing a Chroma vector database for retrieval-augmented generation (RAG), and calling local Ollama (Qwen) instances.
 - **Frontend**: React, Vite, and TypeScript SPA providing a visitor chat interface and an operations panel dashboard for administrators.
 - **Knowledge Base**: Extracted documents from FlowZint's official web pages used to seed the vector database.
 
@@ -13,7 +13,7 @@ The application is structured as a monorepo consisting of:
 
 - **Frontend**: React 18, TypeScript, Vite, Lucide Icons, Custom CSS variables
 - **Backend**: FastAPI, Uvicorn, SQLAlchemy, Pydantic, Requests
-- **Machine Learning & Storage**: Chroma DB (vector storage), Sentence-Transformers (local text embeddings), SQLite (relational storage), Ollama / Gemma (local LLM)
+- **Machine Learning & Storage**: Chroma DB (vector storage), Sentence-Transformers (local text embeddings), SQLite (relational storage), Ollama / Qwen (local LLM)
 
 ## Features
 
@@ -28,7 +28,7 @@ The application is structured as a monorepo consisting of:
 ### Prerequisites
 - Python 3.11 or higher
 - Node.js 18 or higher
-- Ollama (installed locally and running the `gemma` model)
+- Ollama (installed locally and running the `qwen2.5:1.5b` model)
 
 ### 1. Backend Setup
 
@@ -84,7 +84,7 @@ d:\SupportBOT\
 │   ├── app/
 │   │   ├── config.py        # Settings and environment variables
 │   │   ├── database.py      # Database models and session setup
-│   │   ├── llm.py           # Gemma LLM client and heuristic fallback
+│   │   ├── llm.py           # Qwen LLM client and heuristic fallback
 │   │   ├── vector_store.py  # Chroma DB connection and chunking
 │   │   ├── clustering.py    # Text similarity clustering logic
 │   │   ├── schemas.py       # Pydantic schemas
@@ -122,14 +122,14 @@ d:\SupportBOT\
 
 #### 2. Stateful Conversation History & Lead Escalation Filtering
 - **Stateful Context Memory**: Added `session_id` to database schemas (`backend/app/database.py`, `backend/app/schemas.py`) and cached unique session IDs in the React front-end `ChatWidget.tsx`.
-- **Coreference Resolution**: Integrated a Gemma query rewriter in `backend/app/llm.py` that parses conversation history to translate context-dependent messages (e.g. *"okay what do you offer in these?"*) into standalone search queries before retrieval.
+- **Coreference Resolution**: Integrated a Qwen query rewriter in `backend/app/llm.py` that parses conversation history to translate context-dependent messages (e.g. *"okay what do you offer in these?"*) into standalone search queries before retrieval.
 - **Lead Filtering**: Created `resolved_by_ai` status for purely informational chats. Only logs tickets as `pending_review` (actionable leads) if they contain contact information, express negative sentiment, have high urgency/severity, or fail RAG grounding.
 - **Dashboard Cleanup**: Set the `AdminDashboard.tsx` status queue to filter by `pending_review` by default, keeping the dashboard clean. Styled a custom `RESOLVED BY AI` status badge.
 
 #### 3. Bug Report Classification & Empathetic Fallback Responses
 - **Bug Detection Heuristics**: Expanded `rule_based_fallback_analysis` in `backend/app/llm.py` to identify error keywords and interface components. Handled typos (like "webstie") and added overrides for uppercase/exclamation complaints, force-escalating them as high-severity/frustrated tickets.
 - **Empathetic Heuristic Responses**: Updated `generate_heuristic_response` to check for technical issues and apologize + log technical complaints immediately, avoiding generic marketing pitches for broken systems.
-- **Ollama Timeout Resolution**: Increased the REST request timeout limit from 25 seconds to 60 seconds in `call_ollama`. Added `"keep_alive": "1h"` to the request payload so that the local Ollama instance keeps the Gemma model weights loaded in system RAM for 1 hour, preventing cold-start delays.
+- **Ollama Timeout Resolution**: Increased the REST request timeout limit from 25 seconds to 60 seconds in `call_ollama`. Added `"keep_alive": "1h"` to the request payload so that the local Ollama instance keeps the Qwen model weights loaded in system RAM for 1 hour, preventing cold-start delays.
 
 #### 4. Fuzzy Spelling Engine & Conversational Auto-Resolution
 - **Fuzzy Spelling Corrector**: Built an edit-distance fuzzy spelling correction engine utilizing the standard Python library `difflib` and a comprehensive support dictionary covering errors, interface elements, intents, and resolution keywords. Misspelled words (e.g. `webstie` -> `website`, `intrnshp` -> `internship`, `crsh` -> `crash`, `flznt` -> `flowzint`) are corrected while preserving original casing.
