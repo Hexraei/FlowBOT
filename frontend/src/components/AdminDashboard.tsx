@@ -165,11 +165,8 @@ export const AdminDashboard: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: '800', letterSpacing: '-0.025em' }}>
-            FlowZint Support Intelligence Hub
+            Dashboard
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14.5px', marginTop: '4px' }}>
-            Triaging incoming visitor requests, qualifying intents, and routing handoffs.
-          </p>
         </div>
         
         <button
