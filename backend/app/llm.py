@@ -56,6 +56,30 @@ def call_ollama(prompt: str, system_prompt: str = None, format_json: bool = True
         print(f"Ollama/Qwen request failed: {e}")
         raise e
 
+def refine_analysis_dict(message: str, analysis: dict) -> dict:
+    """Post-processes and refines LLM analysis using robust rule-based overrides."""
+    corrected_message = " ".join(fuzzy_correct_token(tok) for tok in message.split())
+    msg_lower = corrected_message.lower()
+    
+    # 1. Force internship_programs if keywords suggest internships
+    import re
+    if re.search(r'\bintern(ship)?s?\b', msg_lower) or any(kw in msg_lower for kw in ["registration fee", "fee for the internship", "internship programs"]):
+        analysis["intent"] = "internship_programs"
+        analysis["probable_component"] = "Careers"
+        
+    # 2. Force human_takeover if keywords suggest human agent request
+    is_takeover = any(kw in msg_lower for kw in [
+        "human", "agent", "representative", "person", "someone", "support team", "support staff", "real agent", "live agent", "takeover"
+    ]) or "talk to" in msg_lower or "connect me" in msg_lower
+    
+    if is_takeover:
+        analysis["intent"] = "human_takeover"
+        analysis["probable_component"] = "Live Chat"
+        analysis["severity"] = "medium"
+        analysis["urgency"] = max(analysis.get("urgency", 3), 4)
+
+    return analysis
+
 def analyze_ticket(message: str) -> dict:
     """
     Classifies intent, estimates severity, sentiment, urgency, component,
@@ -90,7 +114,7 @@ JSON Response:
         response_text = call_ollama(prompt, system_prompt=system_prompt, format_json=True)
         data = json.loads(response_text)
         # Validate keys and types, apply defaults if missing
-        return {
+        analysis = {
             "intent": data.get("intent", "other"),
             "summary": data.get("summary", message[:100] + "..."),
             "severity": data.get("severity", "low"),
@@ -100,6 +124,7 @@ JSON Response:
             "contact_details": data.get("contact_details", ""),
             "confidence_score": float(data.get("confidence_score", 0.5))
         }
+        return refine_analysis_dict(message, analysis)
     except Exception as e:
         print(f"Failed to process Qwen structured output: {e}")
         # Rule-based fallback if JSON parsing fails or Ollama is offline
@@ -517,6 +542,7 @@ JSON Response:
             "contact_details": data.get("contact_details", ""),
             "confidence_score": float(data.get("confidence_score", 0.5))
         }
+        analysis = refine_analysis_dict(message, analysis)
         
         bot_response = data.get("answer", "").strip()
         lower_resp = bot_response.lower()
